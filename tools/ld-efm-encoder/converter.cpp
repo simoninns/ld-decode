@@ -149,27 +149,53 @@ QVector<uint8_t> F1FrameToF2Frame::inverter(QVector<uint8_t> data) {
 }
 
 QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
+    // The error correction encoder C2 generates a (28,24) Reed-Solomon code.
+    // There are four parity bytes Q output from 24 bytes of input.
+
     if (data.size() != 24) {
         qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 24 integers in the range 0-255.");
     }
-    // Implement Reed-Solomon encoding here
-    QVector<uint8_t> encoded_data = data; // Placeholder
-    while (encoded_data.size() < 28) {
-        encoded_data.append(0); // Pad with zeros
+
+    C2RS<255,251> c2rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
+
+    // Convert the QVector to a std::vector for the ezpwd library
+    std::vector<uint8_t> tmp_data(data.begin(), data.end());
+    c2rs.encode(tmp_data);
+
+    // Convert the std::vector back to a QVector
+    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+
+    // Ensure the output is 28 bytes long
+    if (data.size() != 28) {
+        qFatal("F1FrameToF2Frame::encoderC1(): Output of EZPWD must be 32 integers.");
     }
-    return encoded_data;
+
+    return data;
 }
 
 QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
+    // The error correction encoder C1 generates a (32,28) Reed-Solomon code.
+    // There are four parity bytes P output from 28 bytes of input.
+
     if (data.size() != 28) {
         qFatal("F1FrameToF2Frame::encoderC1(): Data must be a QVector of 28 integers in the range 0-255.");
     }
-    // Implement Reed-Solomon encoding here
-    QVector<uint8_t> encoded_data = data; // Placeholder
-    while (encoded_data.size() < 32) {
-        encoded_data.append(0); // Pad with zeros
+
+    C1RS<255,251> c1rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
+
+    // Convert the QVector to a std::vector for the ezpwd library
+    std::vector<uint8_t> tmp_data(data.begin(), data.end());
+    c1rs.encode(tmp_data);
+
+    // Convert the std::vector back to a QVector
+    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+
+    // Ensure the output is 32 bytes long
+    if (data.size() != 32) {
+        qFatal("F1FrameToF2Frame::encoderC1(): Output of EZPWD must be 32 integers.");
     }
-    return encoded_data;
+
+    return data;
 }
 
 // F2FrameToF3Frame class implementation

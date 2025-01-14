@@ -29,8 +29,21 @@
 #include <QQueue>
 #include <QMap>
 #include <cstdint>
+
 #include "delay_lines.h"
 #include "frame.h"
+#include "ezpwd/rs_base"
+#include "ezpwd/rs"
+
+// ezpwd C1 ECMA-130 CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
+template < size_t PAYLOAD > struct C1RS<255, PAYLOAD>
+    : public __RS(C1RS, uint8_t, 255, PAYLOAD, 0x11d, 0, 1, false);
+
+// ezpwd C2 ECMA-130 CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
+template < size_t PAYLOAD > struct C2RS<255, PAYLOAD>
+    : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11d, 0, 1, false);
 
 class Converter {
 public:
