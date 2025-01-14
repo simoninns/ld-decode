@@ -97,8 +97,10 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
         if (f2_frame_to_f3.is_ready()) {
             // Pop the F3 frame, count it and push it to the next converter
             QVector<uint8_t> f3_frame = f2_frame_to_f3.pop_frame();
+            F3Frame::FrameType frame_type = f2_frame_to_f3.pop_frame_type();
             f3_frame_count++;
             f3_to_channel.push_frame(f3_frame);
+            f3_to_channel.push_frame_type(frame_type);
         }
 
         // Is there any channel data ready?

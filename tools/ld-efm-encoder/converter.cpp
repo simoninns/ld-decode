@@ -192,6 +192,10 @@ QVector<uint8_t> F2FrameToF3Frame::pop_frame() {
     return output_buffer.dequeue();
 }
 
+F3Frame::FrameType F2FrameToF3Frame::pop_frame_type() {
+    return output_frame_type_buffer.dequeue();
+}
+
 // Process the input queue of F2 frames into F3 frame sections
 // Each section consists of 98 F2 frames, the first two of which are sync frames
 // The remaining 96 frames are subcode frames.
@@ -211,6 +215,7 @@ void F2FrameToF3Frame::process_queue() {
 
         f3_frame.set_data(f2_frame_data);
         output_buffer.enqueue(f3_frame.get_data());
+        output_frame_type_buffer.enqueue(f3_frame.get_frame_type());
 
         section_index++;
         if (section_index >= frames_per_section) {
@@ -234,6 +239,13 @@ void F3FrameToChannel::push_frame(QVector<uint8_t> f3_frame_data) {
         qFatal("F3FrameToChannel::push_frame(): Input must be a QVector of 33 integers.");
     }
     input_buffer.enqueue(f3_frame_data);
+
+    // Queue processed after the frame type is pushed
+    //process_queue();
+}
+
+void F3FrameToChannel::push_frame_type(F3Frame::FrameType frame_type) {
+    input_frame_type_buffer.enqueue(frame_type);
     process_queue();
 }
 
@@ -248,14 +260,24 @@ void F3FrameToChannel::process_queue() {
     while (!input_buffer.isEmpty()) {
         // Pop the F3 frame data from the processing queue
         QVector<uint8_t> f3_frame_data = input_buffer.dequeue();
-
+        F3Frame::FrameType frame_type = input_frame_type_buffer.dequeue();
         QString current_efm = sync_header;
-        QString next_efm = convert_8bit_to_efm(f3_frame_data[0]);
+
+        // Pick the subcode value or a sync symbol based on the frame type
+        QString next_efm;    
+        if (frame_type == F3Frame::Subcode) {
+            next_efm = convert_8bit_to_efm(f3_frame_data[0]);
+        } else if (frame_type == F3Frame::Sync0) {
+            next_efm = convert_8bit_to_efm(256);
+        } else {
+            next_efm = convert_8bit_to_efm(257);
+        }
+        
         QString merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
         dsv = add_to_output_data(current_efm + merging_bits, dsv);
         
         for (uint32_t index = 0; index < 33; index++) {
-            current_efm = convert_8bit_to_efm(f3_frame_data[index]);
+            current_efm = next_efm;
             if (index < 32) next_efm = convert_8bit_to_efm(f3_frame_data[index + 1]);
             else next_efm = sync_header;
 
@@ -269,7 +291,7 @@ void F3FrameToChannel::process_queue() {
 }
 
 // Note: There are 257 EFM symbols: 0 to 255 and two additional sync0 and sync1 symbols
-QString F3FrameToChannel::convert_8bit_to_efm(uint8_t value) {
+QString F3FrameToChannel::convert_8bit_to_efm(uint16_t value) {
     if (value < 258) {
         return efm_lut[value];
     } else {

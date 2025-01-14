@@ -83,6 +83,7 @@ public:
     F2FrameToF3Frame(int max_buffer_size);
     void push_frame(QVector<uint8_t> f2_frame_data) override;
     QVector<uint8_t> pop_frame() override;
+    F3Frame::FrameType pop_frame_type();
 
 protected:
     void process_queue() override;
@@ -91,19 +92,21 @@ private:
     int section_index;
     int frames_per_section;
     int total_processed_sections;
+    QQueue<F3Frame::FrameType> output_frame_type_buffer;
 };
 
 class F3FrameToChannel : public Converter {
 public:
     F3FrameToChannel(int max_buffer_size);
     void push_frame(QVector<uint8_t> f3_frame_data) override;
+    void push_frame_type(F3Frame::FrameType frame_type);
     QVector<uint8_t> pop_frame() override;
 
 protected:
     void process_queue() override;
 
 private:
-    QString convert_8bit_to_efm(uint8_t value);
+    QString convert_8bit_to_efm(uint16_t value);
     int add_to_output_data(const QString& data, int dsv);
     QStringList get_possible_merging_bit_patterns(const QString& current_efm, const QString& next_efm);
     QString choose_merging_bits(const QString& current_efm, const QString& next_efm, int dsv);
@@ -111,6 +114,7 @@ private:
 
     QString output_data;
     int dsv;
+    QQueue<F3Frame::FrameType> input_frame_type_buffer;
 
     static const QString sync_header;
     static const QStringList efm_lut;

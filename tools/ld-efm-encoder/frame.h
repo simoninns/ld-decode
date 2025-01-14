@@ -40,7 +40,7 @@ public:
     bool is_empty() const;
 
 protected:
-    QVector<uint8_t> data;
+    QVector<uint8_t> frame_data;
 };
 
 class F1Frame : public Frame {
@@ -67,14 +67,13 @@ public:
     void set_frame_type_as_sync1();
 
     FrameType get_frame_type() const;
-
-    void set_subcode(uint8_t subcode);
     uint8_t get_subcode() const;
 
     void set_data(const QVector<uint8_t>& data) override;
 
 private:
     FrameType frame_type;
+    uint8_t subcode;
 };
 
 #endif // FRAME_H

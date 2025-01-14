@@ -31,30 +31,30 @@ void Frame::set_data(const QVector<uint8_t>& data) {
     if (data.size() != get_frame_size()) {
         qFatal("Frame::set_data(): Data size does not match frame size");
     }
-    this->data = data;
+    frame_data = data;
 }
 
 // Get the data for the frame, returning a zero-filled vector if empty
 QVector<uint8_t> Frame::get_data() const {
-    if (data.isEmpty()) {
+    if (frame_data.isEmpty()) {
         return QVector<uint8_t>(get_frame_size(), 0);
     }
-    return data;
+    return frame_data;
 }
 
 // Check if the frame is full (i.e., has data)
 bool Frame::is_full() const {
-    return !data.isEmpty();
+    return !frame_data.isEmpty();
 }
 
 // Check if the frame is empty (i.e., has no data)
 bool Frame::is_empty() const {
-    return data.isEmpty();
+    return frame_data.isEmpty();
 }
 
 // Constructor for F1Frame, initializes data to the frame size
 F1Frame::F1Frame() {
-    data.resize(get_frame_size());
+    frame_data.resize(get_frame_size());
 }
 
 // Get the frame size for F1Frame
@@ -64,7 +64,7 @@ int F1Frame::get_frame_size() const {
 
 // Constructor for F2Frame, initializes data to the frame size
 F2Frame::F2Frame() {
-    data.resize(get_frame_size());
+    frame_data.resize(get_frame_size());
 }
 
 // Get the frame size for F2Frame
@@ -74,7 +74,7 @@ int F2Frame::get_frame_size() const {
 
 // Constructor for F3Frame, initializes data to the frame size
 F3Frame::F3Frame() {
-    data.resize(get_frame_size());
+    frame_data.resize(get_frame_size());
 }
 
 // Get the frame size for F3Frame
@@ -83,21 +83,33 @@ int F3Frame::get_frame_size() const {
 }
 
 // Set the frame type as subcode and set the subcode value
-void F3Frame::set_frame_type_as_subcode(uint8_t subcode) {
+void F3Frame::set_frame_type_as_subcode(uint8_t subcode_value) {
     frame_type = Subcode;
-    set_subcode(subcode);
+    
+    if (frame_data.isEmpty()) {
+        frame_data.resize(get_frame_size());
+    }
+    frame_data[0] = subcode_value;
 }
 
 // Set the frame type as sync0 and set the subcode value to 0
 void F3Frame::set_frame_type_as_sync0() {
     frame_type = Sync0;
-    set_subcode(0);
+    
+    if (frame_data.isEmpty()) {
+        frame_data.resize(get_frame_size());
+    }
+    frame_data[0] = 0;
 }
 
 // Set the frame type as sync1 and set the subcode value to 0
 void F3Frame::set_frame_type_as_sync1() {
     frame_type = Sync1;
-    set_subcode(0);
+    
+    if (frame_data.isEmpty()) {
+        frame_data.resize(get_frame_size());
+    }
+    frame_data[0] = 0;
 }
 
 // Get the frame type
@@ -105,20 +117,9 @@ F3Frame::FrameType F3Frame::get_frame_type() const {
     return frame_type;
 }
 
-// Set the subcode value
-void F3Frame::set_subcode(uint8_t subcode) {
-    if (data.isEmpty()) {
-        data.resize(get_frame_size());
-    }
-    data[0] = subcode;
-}
-
 // Get the subcode value
 uint8_t F3Frame::get_subcode() const {
-    if (data.isEmpty()) {
-        return 0;
-    }
-    return data[0];
+    return subcode;
 }
 
 // Set the data for the frame, ensuring it matches the frame size minus one
@@ -127,6 +128,8 @@ void F3Frame::set_data(const QVector<uint8_t>& data) {
     if (data.size() != get_frame_size() - 1) {
         qFatal("F3Frame::set_data(): Data size does not match frame size");
     }
-    this->data = data;
-    this->data.prepend(get_subcode());
+    
+    for (uint32_t i = 0; i < data.size(); ++i) {
+        frame_data[i + 1] = data[i];
+    }
 }
