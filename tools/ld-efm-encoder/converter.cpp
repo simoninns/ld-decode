@@ -90,12 +90,8 @@ QVector<uint8_t> F1FrameToF2Frame::pop_frame() {
 
 void F1FrameToF2Frame::process_queue() {
     while (!input_buffer.isEmpty()) {
-        QVector<uint8_t> data = input_buffer.dequeue();
-        
-        qDebug() << "Input data:" << data;
-
+        QVector<uint8_t> data = input_buffer.dequeue();        
         data = delay_line2.process(data);
-        qDebug() << " Delay2 data:" << data;
         data = interleave(data);
         data = encoderC2(data);
         data = delay_lineM.process(data);
@@ -110,7 +106,7 @@ void F1FrameToF2Frame::process_queue() {
 }
 
 // Perform the interleaving operation on the input data in accordance with
-// ECMA-130 issue 2 page 35
+// ECMA-130 issue 2 page 35 ("Interleaving")
 QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
     QVector<uint8_t> interleaved_data(24, 0);
     interleaved_data[0]  = data[0];
@@ -179,6 +175,7 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
 // F2FrameToF3Frame class implementation
 F2FrameToF3Frame::F2FrameToF3Frame(int max_buffer_size) : Converter(max_buffer_size), section_index(0), frames_per_section(98), total_processed_sections(0) {}
 
+// Input is 32 bytes of data from the F23 frame payload
 void F2FrameToF3Frame::push_frame(QVector<uint8_t> f2_frame_data) {
     if (f2_frame_data.size() != 32) {
         qFatal("F2FrameToF3Frame::push_frame(): Input must be a QVector of 32 integers.");
@@ -187,6 +184,7 @@ void F2FrameToF3Frame::push_frame(QVector<uint8_t> f2_frame_data) {
     process_queue();
 }
 
+// Ouput is 33 bytes of data for the F3 frame payload (1 subcode byte + 32 data bytes)
 QVector<uint8_t> F2FrameToF3Frame::pop_frame() {
     if (!is_ready()) {
         qFatal("F2FrameToF3Frame::pop_frame(): No F3 frames are available.");
@@ -194,6 +192,9 @@ QVector<uint8_t> F2FrameToF3Frame::pop_frame() {
     return output_buffer.dequeue();
 }
 
+// Process the input queue of F2 frames into F3 frame sections
+// Each section consists of 98 F2 frames, the first two of which are sync frames
+// The remaining 96 frames are subcode frames.
 void F2FrameToF3Frame::process_queue() {
     while (!input_buffer.isEmpty()) {
         QVector<uint8_t> f2_frame_data = input_buffer.dequeue();
@@ -204,6 +205,7 @@ void F2FrameToF3Frame::process_queue() {
         } else if (section_index == 1) {
             f3_frame.set_frame_type_as_sync1();
         } else {
+            // Note: The subcode value is not computed here - this is just for testing
             f3_frame.set_frame_type_as_subcode(0);
         }
 
@@ -219,7 +221,13 @@ void F2FrameToF3Frame::process_queue() {
 }
 
 // F3FrameToChannel class implementation
-F3FrameToChannel::F3FrameToChannel(int max_buffer_size) : Converter(max_buffer_size), dsv(0) {}
+F3FrameToChannel::F3FrameToChannel(int max_buffer_size) : Converter(max_buffer_size), dsv(0) {
+    // Output data is a string that represents bits
+    // Since we are working with 14-bit EFM symbols, 3 bit merging symbols and
+    // a 24 bit frame sync header - the output length of a channel frame is 588 bit (73.5 bytes)
+    // so we can't use a QByteArray directly here without introducing unwanted padding
+    output_data = "";
+}
 
 void F3FrameToChannel::push_frame(QVector<uint8_t> f3_frame_data) {
     if (f3_frame_data.size() != 33) {
@@ -238,19 +246,24 @@ QVector<uint8_t> F3FrameToChannel::pop_frame() {
 
 void F3FrameToChannel::process_queue() {
     while (!input_buffer.isEmpty()) {
+        // Pop the F3 frame data from the processing queue
         QVector<uint8_t> f3_frame_data = input_buffer.dequeue();
+
         QString current_efm = sync_header;
         QString next_efm = convert_8bit_to_efm(f3_frame_data[0]);
         QString merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
         dsv = add_to_output_data(current_efm + merging_bits, dsv);
-
-        for (int index = 0; index < f3_frame_data.size(); ++index) {
+        
+        for (uint32_t index = 0; index < 33; index++) {
             current_efm = convert_8bit_to_efm(f3_frame_data[index]);
-            next_efm = (index != 32) ? convert_8bit_to_efm(f3_frame_data[index + 1]) : sync_header;
+            if (index < 32) next_efm = convert_8bit_to_efm(f3_frame_data[index + 1]);
+            else next_efm = sync_header;
+
             merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
             dsv = add_to_output_data(current_efm + merging_bits, dsv);
         }
 
+        // Flush the output data to the output buffer
         flush_output_data();
     }
 }
@@ -265,8 +278,6 @@ QString F3FrameToChannel::convert_8bit_to_efm(uint8_t value) {
 }
 
 int F3FrameToChannel::add_to_output_data(const QString& data, int dsv) {
-    QString original_output_data = output_data;
-
     for (QChar bit : data) {
         if (bit == '1') {
             dsv++;
@@ -277,6 +288,9 @@ int F3FrameToChannel::add_to_output_data(const QString& data, int dsv) {
 
     output_data += data;
 
+    // Double check the merging bits result in valid output data:
+    // The rules state that you have to have at lease 2 zeros between each 1 and no more than 10 zeros.
+    // So, if we see 11, 101 or 1000000000001 in the output data, something is wrong.
     if (output_data.contains("11") || output_data.contains("101") || output_data.contains("1000000000001")) {
         qFatal("F3FrameToChannel::add_to_output_data(): Invalid value in output_data");
     }
@@ -316,10 +330,21 @@ QString F3FrameToChannel::choose_merging_bits(const QString& current_efm, const 
 }
 
 void F3FrameToChannel::flush_output_data() {
+    // Since the base class uses QVector<uint8_t> for the output buffer we have to as well
+    QVector<uint8_t> output_bytes;
+
+    //If there are less than 12 bits in the output data, just return
+    if (output_data.size() < 12) {
+        return;
+    }
+
+    // Note: output_data is a string of bits
     while (output_data.size() >= 12) {
+        // Is the first bit a 1?
         if (output_data[0] == '1') {
-            int zero_count = 0;
-            for (int i = 1; i < output_data.size(); ++i) {
+            // Yes, so count the number of 0s until the next 1
+            uint32_t zero_count = 0;
+            for (uint32_t i = 1; i < output_data.size(); i++) {
                 if (output_data[i] == '0') {
                     zero_count++;
                 } else {
@@ -327,22 +352,31 @@ void F3FrameToChannel::flush_output_data() {
                 }
             }
 
+            // The number of zeros is not between 2 and 10 - something is wrong in the input data
             if (zero_count < 2 || zero_count > 10) {
                 qFatal("F3FrameToChannel::flush_output_data(): Number of zeros between ones is not between 2 and 10.");
             }
 
-            output_data.remove(0, 1 + zero_count);
+            output_data.remove(0, zero_count + 1);
+
+            // Append the T-value to the output bytes (the number of zeros plus 1)
             output_bytes.append(zero_count + 1);
         } else {
-            output_data.remove(0, 1);
+            // First bit is zero... input data is invalid!
+            qFatal("F3FrameToChannel::flush_output_data(): First bit should not be zero!");
         }
     }
 
-    output_buffer.enqueue(output_bytes); // Change from QByteArray to QVector<uint8_t>
+    output_buffer.enqueue(output_bytes);
 }
 
+// Define the 24-bit sync header for the F3 frame
 const QString F3FrameToChannel::sync_header = "100000000001000000000010";
 
+// Note: The EFM LUT is a list of 257 EFM symbols, each represented as a 14-bit string
+// The EFM symbols are indexed from 0 to 257 with the first 256 symbols representing
+// the 8-bit data values from 0 to 255 and the last symbols representing the sync header
+// sync0 and sync1 respectively.
 const QStringList F3FrameToChannel::efm_lut = {
     "01001000100000", "10000100000000", "10010000100000", "10001000100000",
     "01000100000000", "00000100010000", "00010000100000", "00100100000000",

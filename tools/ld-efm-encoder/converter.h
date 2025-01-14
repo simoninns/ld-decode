@@ -110,7 +110,6 @@ private:
     void flush_output_data();
 
     QString output_data;
-    QVector<uint8_t> output_bytes; // Change from QByteArray to QVector<uint8_t>
     int dsv;
 
     static const QString sync_header;

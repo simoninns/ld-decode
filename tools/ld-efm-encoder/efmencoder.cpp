@@ -50,7 +50,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
     // Prepare the output file
     QFile output_file(output_filename);
 
-    if (!output_file.open(QIODevice::WriteOnly | QIODevice::Append)) {
+    if (!output_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         qDebug() << "EfmEncoder::encode(): Failed to open output file: " << output_filename;
         return false;
     }
@@ -85,44 +85,36 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
             f1_frame_to_f2.push_frame(f1_frame);
         }
 
-        // Untested code below this line :)
+        // Are there any F2 frames ready?
+        if (f1_frame_to_f2.is_ready()) {
+            // Pop the F2 frame, count it and push it to the next converter
+            QVector<uint8_t> f2_frame = f1_frame_to_f2.pop_frame();
+            f2_frame_count++;
+            f2_frame_to_f3.push_frame(f2_frame);
+        }
 
-        // // Are there any F2 frames ready?
-        // if (f1_frame_to_f2.is_ready()) {
-        //     // Pop the F2 frame, count it and push it to the next converter
-        //     QVector<uint8_t> f2_frame = f1_frame_to_f2.pop_frame();
-        //     f2_frame_count++;
-        //     f2_frame_to_f3.push_frame(f2_frame);
-        // }
+        // Are there any F3 frames ready?
+        if (f2_frame_to_f3.is_ready()) {
+            // Pop the F3 frame, count it and push it to the next converter
+            QVector<uint8_t> f3_frame = f2_frame_to_f3.pop_frame();
+            f3_frame_count++;
+            f3_to_channel.push_frame(f3_frame);
+        }
 
-        // // Are there any F3 frames ready?
-        // if (f2_frame_to_f3.is_ready()) {
-        //     // Pop the F3 frame, count it and push it to the next converter
-        //     QVector<uint8_t> f3_frame = f2_frame_to_f3.pop_frame();
-        //     f3_frame_count++;
-        //     f3_to_channel.push_frame(f3_frame);
-        // }
+        // Is there any channel data ready?
+        if (f3_to_channel.is_ready()) {
+            // Pop the channel data, count it and write it to the output file
+            QVector<uint8_t> channel_data = f3_to_channel.pop_frame();
+            channel_byte_count += channel_data.size();
 
-        // // Is there any channel data ready?
-        // if (f3_to_channel.is_ready()) {
-        //     // Pop the channel data, count it and write it to the output file
-        //     QVector<uint8_t> channel_data = f3_to_channel.pop_frame();
-        //     channel_byte_count += channel_data.size();
-
-        //     // Write the channel data to the output file
-        //     output_file.write(reinterpret_cast<const char*>(channel_data.data()), channel_data.size());
-        // }
+            // Write the channel data to the output file
+            output_file.write(reinterpret_cast<const char*>(channel_data.data()), channel_data.size());
+        }
 
         // Print progress every 25 F1 frames
         if (f1_frame_count % 25 == 0) {
             qDebug() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
                 f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
-        }
-
-        // Break out of the loop after processing 1024 bytes of audio data - Just for testing
-        if (audio_data_count >= 1024) {
-            qDebug() << "Reached 1024 bytes of audio data, stopping encoding.";
-            break;
         }
     }
 
