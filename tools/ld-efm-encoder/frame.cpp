@@ -62,6 +62,14 @@ int F1Frame::get_frame_size() const {
     return 24;
 }
 
+void F1Frame::show_data() {
+    QString dataString;
+    for (int i = 0; i < frame_data.size(); ++i) {
+        dataString.append(QString("%1 ").arg(frame_data[i], 2, 16, QChar('0')));
+    }
+    qDebug().noquote() << "F1Frame data:" << dataString.trimmed();
+}
+
 // Constructor for F2Frame, initializes data to the frame size
 F2Frame::F2Frame() {
     frame_data.resize(get_frame_size());
@@ -72,44 +80,42 @@ int F2Frame::get_frame_size() const {
     return 32;
 }
 
+void F2Frame::show_data() {
+    QString dataString;
+    for (int i = 0; i < frame_data.size(); ++i) {
+        dataString.append(QString("%1 ").arg(frame_data[i], 2, 16, QChar('0')));
+    }
+    qDebug().noquote() << "F2Frame data:" << dataString.trimmed();
+}
+
 // Constructor for F3Frame, initializes data to the frame size
 F3Frame::F3Frame() {
     frame_data.resize(get_frame_size());
+    subcode = 0;
+    frame_type = Subcode;
 }
 
 // Get the frame size for F3Frame
 int F3Frame::get_frame_size() const {
-    return 33;
+    return 32;
 }
 
 // Set the frame type as subcode and set the subcode value
 void F3Frame::set_frame_type_as_subcode(uint8_t subcode_value) {
     frame_type = Subcode;
-    
-    if (frame_data.isEmpty()) {
-        frame_data.resize(get_frame_size());
-    }
-    frame_data[0] = subcode_value;
+    subcode = subcode_value;
 }
 
 // Set the frame type as sync0 and set the subcode value to 0
 void F3Frame::set_frame_type_as_sync0() {
     frame_type = Sync0;
-    
-    if (frame_data.isEmpty()) {
-        frame_data.resize(get_frame_size());
-    }
-    frame_data[0] = 0;
+    subcode = 0;
 }
 
 // Set the frame type as sync1 and set the subcode value to 0
 void F3Frame::set_frame_type_as_sync1() {
     frame_type = Sync1;
-    
-    if (frame_data.isEmpty()) {
-        frame_data.resize(get_frame_size());
-    }
-    frame_data[0] = 0;
+    subcode = 0;
 }
 
 // Get the frame type
@@ -122,14 +128,10 @@ uint8_t F3Frame::get_subcode() const {
     return subcode;
 }
 
-// Set the data for the frame, ensuring it matches the frame size minus one
-// and prepending the subcode value
-void F3Frame::set_data(const QVector<uint8_t>& data) {
-    if (data.size() != get_frame_size() - 1) {
-        qFatal("F3Frame::set_data(): Data size does not match frame size");
+void F3Frame::show_data() {
+    QString dataString;
+    for (int i = 0; i < frame_data.size(); ++i) {
+        dataString.append(QString("%1 ").arg(frame_data[i], 2, 16, QChar('0')));
     }
-    
-    for (uint32_t i = 0; i < data.size(); ++i) {
-        frame_data[i + 1] = data[i];
-    }
+    qDebug().noquote() << "F3Frame data:" << dataString.trimmed();
 }

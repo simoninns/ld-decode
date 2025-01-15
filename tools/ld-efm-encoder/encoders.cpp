@@ -32,7 +32,6 @@
 #include "frame.h"
 #include "encoders.h"
 
-
 // Data24ToF1Frame class implementation
 Data24ToF1Frame::Data24ToF1Frame() {}
 
@@ -291,25 +290,36 @@ void F3FrameToChannel::process_queue() {
     while (!input_buffer.isEmpty()) {
         // Pop the F3 frame data from the processing queue
         F3Frame f3_frame = input_buffer.dequeue();
-        QString current_efm = sync_header;
         QVector<uint8_t> f3_frame_data = f3_frame.get_data();
 
-        // Pick the subcode value or a sync symbol based on the frame type
-        QString next_efm;    
+        // Process the F3 frame sync header
+        QString current_efm = sync_header;
+        QString next_efm;
+        QString merging_bits;
+
+        // Pick the subcode value or a sync0/1 symbol based on the frame type    
         if (f3_frame.get_frame_type() == F3Frame::Subcode) {
-            next_efm = convert_8bit_to_efm(f3_frame_data[0]);
+            next_efm = convert_8bit_to_efm(f3_frame.get_subcode());
         } else if (f3_frame.get_frame_type() == F3Frame::Sync0) {
             next_efm = convert_8bit_to_efm(256);
         } else {
             next_efm = convert_8bit_to_efm(257);
         }
         
-        QString merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
+        merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
         dsv = add_to_output_data(current_efm + merging_bits, dsv);
-        
-        for (uint32_t index = 0; index < 33; index++) {
-            current_efm = next_efm;
-            if (index < 32) next_efm = convert_8bit_to_efm(f3_frame_data[index + 1]);
+
+        // Now output the F3 frame subcode data
+        current_efm = next_efm;
+        next_efm = convert_8bit_to_efm(f3_frame_data[0]);
+
+        merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
+        dsv = add_to_output_data(current_efm + merging_bits, dsv);
+
+        // Now output the F3 frame data
+        for (uint32_t index = 0; index < f3_frame_data.size(); index++) {
+            current_efm = convert_8bit_to_efm(f3_frame_data[index]);
+            if (index < f3_frame_data.size()-1) next_efm = convert_8bit_to_efm(f3_frame_data[index+1]);
             else next_efm = sync_header;
 
             merging_bits = choose_merging_bits(current_efm, next_efm, dsv);
@@ -349,6 +359,7 @@ int F3FrameToChannel::add_to_output_data(const QString& data, int dsv) {
     // The rules state that you have to have at lease 2 zeros between each 1 and no more than 10 zeros.
     // So, if we see 11, 101 or 1000000000001 in the output data, something is wrong.
     if (output_data.contains("11") || output_data.contains("101") || output_data.contains("1000000000001")) {
+        qDebug() << "F3FrameToChannel::add_to_output_data(): Output data:" << output_data;
         qFatal("F3FrameToChannel::add_to_output_data(): Invalid value in output_data");
     }
 

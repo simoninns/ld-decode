@@ -97,6 +97,16 @@ bool AudioToData::open() {
 
     qInfo() << "AudioToData::open(): Audio data loaded with" << audioData.size() << "bytes after padding";
 
+    // // Debug output of audioData contents in xxd format
+    // qDebug() << "AudioToData::open(): Audio data contents:";
+    // for (int i = 0; i < audioData.size(); i += 16) {
+    //     QString line = QString("%1: ").arg(i, 8, 16, QChar('0'));
+    //     for (int j = 0; j < 16 && i + j < audioData.size(); ++j) {
+    //         line += QString("%1 ").arg(static_cast<uint8_t>(audioData[i + j]), 2, 16, QChar('0'));
+    //     }
+    //     qDebug().noquote() << line;
+    // }
+
     return true;
 }
 

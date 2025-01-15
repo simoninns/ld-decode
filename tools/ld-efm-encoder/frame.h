@@ -47,12 +47,14 @@ class F1Frame : public Frame {
 public:
     F1Frame();
     int get_frame_size() const override;
+    void show_data();
 };
 
 class F2Frame : public Frame {
 public:
     F2Frame();
     int get_frame_size() const override;
+    void show_data();
 };
 
 class F3Frame : public Frame {
@@ -69,7 +71,7 @@ public:
     FrameType get_frame_type() const;
     uint8_t get_subcode() const;
 
-    void set_data(const QVector<uint8_t>& data) override;
+    void show_data();
 
 private:
     FrameType frame_type;

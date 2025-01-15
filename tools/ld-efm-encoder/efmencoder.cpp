@@ -85,6 +85,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename, bool au
         if (data24_to_f1.is_ready()) {
             // Pop the F1 frame, count it and push it to the next converter
             F1Frame f1_frame = data24_to_f1.pop_frame();
+            //f1_frame.show_data();
             f1_frame_count++;
             f1_frame_to_f2.push_frame(f1_frame);
         }
@@ -93,6 +94,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename, bool au
         if (f1_frame_to_f2.is_ready()) {
             // Pop the F2 frame, count it and push it to the next converter
             F2Frame f2_frame = f1_frame_to_f2.pop_frame();
+            //f2_frame.show_data();
             f2_frame_count++;
             f2_frame_to_f3.push_frame(f2_frame);
         }
@@ -101,6 +103,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename, bool au
         if (f2_frame_to_f3.is_ready()) {
             // Pop the F3 frame, count it and push it to the next converter
             F3Frame f3_frame = f2_frame_to_f3.pop_frame();
+            //f3_frame.show_data();
             f3_frame_count++;
             f3_to_channel.push_frame(f3_frame);
         }
