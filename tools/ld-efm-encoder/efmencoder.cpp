@@ -28,7 +28,7 @@
 
 #include "efmencoder.h"
 #include "audio.h"
-#include "converter.h"
+#include "encoders.h"
 
 // Testing only
 #include "delay_lines.h"
@@ -37,11 +37,15 @@ EfmEncoder::EfmEncoder()
 {
 }
 
-bool EfmEncoder::encode(QString input_filename, QString output_filename)
+bool EfmEncoder::encode(QString input_filename, QString output_filename, bool audio_test, int32_t audio_test_frames)
 {
-    qDebug() << "EfmEncoder::encode(): Encoding EFM data from file: " << input_filename << " to file: " << output_filename;
+    if (!audio_test) {
+        qDebug() << "EfmEncoder::encode(): Encoding EFM data from file: " << input_filename << " to file: " << output_filename;
+    } else {
+        qDebug() << "EfmEncoder::encode(): Encoding EFM data from audio test to file: " << output_filename;
+    }
 
-    AudioToData audio_data(input_filename);
+    AudioToData audio_data(input_filename, audio_test, audio_test_frames);
     if (!audio_data.open()) {
         qDebug() << "EfmEncoder::encode(): Failed to load audio file: " << input_filename;
         return false;
@@ -59,11 +63,11 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
     QVector<uint8_t> wav_data_vector;
     uint32_t audio_data_count = 0;
 
-    // Prepare the converters
-    Data24ToF1Frame data24_to_f1(1024);
-    F1FrameToF2Frame f1_frame_to_f2(1024);
-    F2FrameToF3Frame f2_frame_to_f3(1024);
-    F3FrameToChannel f3_to_channel(1024);
+    // Prepare the encoders
+    Data24ToF1Frame data24_to_f1;
+    F1FrameToF2Frame f1_frame_to_f2;
+    F2FrameToF3Frame f2_frame_to_f3;
+    F3FrameToChannel f3_to_channel;
 
     uint32_t f1_frame_count = 0;
     uint32_t f2_frame_count = 0;
@@ -80,7 +84,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
         // Are there any F1 frames ready?
         if (data24_to_f1.is_ready()) {
             // Pop the F1 frame, count it and push it to the next converter
-            QVector<uint8_t> f1_frame = data24_to_f1.pop_frame();
+            F1Frame f1_frame = data24_to_f1.pop_frame();
             f1_frame_count++;
             f1_frame_to_f2.push_frame(f1_frame);
         }
@@ -88,7 +92,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
         // Are there any F2 frames ready?
         if (f1_frame_to_f2.is_ready()) {
             // Pop the F2 frame, count it and push it to the next converter
-            QVector<uint8_t> f2_frame = f1_frame_to_f2.pop_frame();
+            F2Frame f2_frame = f1_frame_to_f2.pop_frame();
             f2_frame_count++;
             f2_frame_to_f3.push_frame(f2_frame);
         }
@@ -96,11 +100,9 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
         // Are there any F3 frames ready?
         if (f2_frame_to_f3.is_ready()) {
             // Pop the F3 frame, count it and push it to the next converter
-            QVector<uint8_t> f3_frame = f2_frame_to_f3.pop_frame();
-            F3Frame::FrameType frame_type = f2_frame_to_f3.pop_frame_type();
+            F3Frame f3_frame = f2_frame_to_f3.pop_frame();
             f3_frame_count++;
             f3_to_channel.push_frame(f3_frame);
-            f3_to_channel.push_frame_type(frame_type);
         }
 
         // Is there any channel data ready?
@@ -114,16 +116,18 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename)
         }
 
         // Print progress every 25 F1 frames
-        if (f1_frame_count % 25 == 0) {
-            qDebug() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
-                f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
-        }
+        // if (f1_frame_count % 25 == 0) {
+        //     qDebug() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
+        //         f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
+        // }
     }
 
     // Close the input and output files
     audio_data.close();
     output_file.close();
 
-    qDebug() << "Encoding complete";
+    qInfo() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
+                f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
+    qInfo() << "Encoding complete";
     return true;
 }

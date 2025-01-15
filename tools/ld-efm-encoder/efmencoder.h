@@ -32,7 +32,7 @@ class EfmEncoder
 public:
     EfmEncoder();
 
-    bool encode(QString input_fileName, QString output_fileName);
+    bool encode(QString input_fileName, QString output_fileName, bool audio_test, int32_t audio_test_frames);
 };
 
 #endif // EFMENCODER_H

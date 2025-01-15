@@ -85,10 +85,12 @@ QVector<uint8_t> DelayLine2::process(QVector<uint8_t> input_data) {
 
     QVector<uint8_t> output_data(24, 0);
 
+    // Copy the data that doesn't require delay
     for (int i : {4, 5, 6, 7, 12, 13, 14, 15, 20, 21, 22, 23}) {
         output_data[i] = input_data[i];
     }
 
+    // Copy the data that requires delay
     for (int i : {0, 1, 2, 3, 8, 9, 10, 11, 16, 17, 18, 19}) {
         delay_buffers[i].enqueue(input_data[i]);
         output_data[i] = delay_buffers[i].dequeue();
@@ -117,10 +119,12 @@ QVector<uint8_t> DelayLine1::process(QVector<uint8_t> input_data) {
 
     QVector<uint8_t> output_data(32, 0);
 
+    // Copy the data that doesn't require delay
     for (int i : {1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31}) {
         output_data[i] = input_data[i];
     }
 
+    // Copy the data that requires delay
     for (int i : {0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30}) {
         delay_buffers[i].enqueue(input_data[i]);
         output_data[i] = delay_buffers[i].dequeue();

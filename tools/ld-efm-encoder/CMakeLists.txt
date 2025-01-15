@@ -4,7 +4,7 @@ add_executable(ld-efm-encoder
     frame.cpp
     audio.cpp
     delay_lines.cpp
-    converter.cpp
+    encoders.cpp
 )
 
 target_include_directories(ld-efm-encoder PRIVATE .)

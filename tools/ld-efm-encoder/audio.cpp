@@ -26,33 +26,77 @@
 #include <QByteArray>
 #include <QDataStream>
 #include <QVector>
+#include <QDebug>
 
 #include "audio.h"
 
-AudioToData::AudioToData(const QString &filename)
-    : _filename(filename) {}
+AudioToData::AudioToData(const QString &filename, bool audio_test, int32_t audio_test_frames) : _filename(filename), _audio_test(audio_test), _audio_test_frames(audio_test_frames) {}
 
 bool AudioToData::open() {
-    QFile file(_filename);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return false;
+    if (!_audio_test) {
+        QFile file(_filename);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+
+        QByteArray header = file.read(44);
+        if (header.size() != 44) {
+            return false;
+        }
+
+        // Check WAV file format
+        if (header.mid(0, 4) != "RIFF" || header.mid(8, 4) != "WAVE" ||
+            header.mid(12, 4) != "fmt " || header.mid(20, 2).toHex() != "0100" ||
+            header.mid(22, 2).toHex() != "0200" || header.mid(24, 4).toHex() != "44ac0000" ||
+            header.mid(34, 2).toHex() != "1000") {
+            return false;
+        }
+
+        audioData = file.readAll();
+        file.close();
+    } else {
+        // This an audio test, so we generate the audio data based
+        // on the number of frames requested
+
+        // Note: The 16 bit samples (according to IEC 60908-1999 are 16-bit signed integers)
+        // Order is left channel, right channel, left channel, right channel, etc.
+        // 
+        // Data is big-endian, so the first byte is the most significant byte and the first bit
+        // is the most significant bit
+
+        audioData.clear();
+        int16_t left_sample = 0;
+        int16_t right_sample = 0;
+
+        qInfo() << "AudioToData::open(): Generating audio test data with" << _audio_test_frames << "frames.";
+        qInfo() << "AudioToData::open(): Audio test data will be 16-bit stereo at 44.1kHz totalling" << _audio_test_frames * 4 << "bytes.";
+        qInfo() << "AudioToData::open():" << _audio_test_frames << "frames contains" << _audio_test_frames * 2 << "samples.";
+
+        for (uint32_t i = 0; i < _audio_test_frames; ++i) {
+            uint8_t left_msb = static_cast<uint8_t>((left_sample >> 8) & 0xFF);
+            uint8_t left_lsb = static_cast<uint8_t>(left_sample & 0xFF);
+            uint8_t right_msb = static_cast<uint8_t>((right_sample >> 8) & 0xFF);
+            uint8_t right_lsb = static_cast<uint8_t>(right_sample & 0xFF);
+
+            audioData.append(left_msb);
+            audioData.append(left_lsb);
+            audioData.append(right_msb);
+            audioData.append(right_lsb);
+
+            // Change the sample values
+            left_sample++;
+            //right_sample--;
+        }
     }
 
-    QByteArray header = file.read(44);
-    if (header.size() != 44) {
-        return false;
-    }
+    // The longest possible delay of data through the encoder (according to ECMA-130 issue 2 page 34) is
+    // 108 F1 Frames (the shortest is 3 F1 Frames).  Since an F1 frame is 24 8-bit bytes we need to pad
+    // the incoming data by 108 * 24 bytes to ensure we have enough data to process = 2592 bytes
+    // Otherwise we will loose audio data at the end of the file
+    audioData.append(QByteArray(2592, 0));
 
-    // Check WAV file format
-    if (header.mid(0, 4) != "RIFF" || header.mid(8, 4) != "WAVE" ||
-        header.mid(12, 4) != "fmt " || header.mid(20, 2).toHex() != "0100" ||
-        header.mid(22, 2).toHex() != "0200" || header.mid(24, 4).toHex() != "44ac0000" ||
-        header.mid(34, 2).toHex() != "1000") {
-        return false;
-    }
+    qInfo() << "AudioToData::open(): Audio data loaded with" << audioData.size() << "bytes after padding";
 
-    audioData = file.readAll();
-    file.close();
     return true;
 }
 
@@ -65,10 +109,7 @@ QVector<uint8_t> AudioToData::read_24_bytes() {
         return QVector<uint8_t>();
     }
 
-    QVector<uint8_t> data;
-    for (int i = 0; i < 24; ++i) {
-        data.append(static_cast<uint8_t>(audioData[i]));
-    }
+    QVector<uint8_t> data = QVector<uint8_t>(audioData.begin(), audioData.begin() + 24);
     audioData.remove(0, 24);
     return data;
 }

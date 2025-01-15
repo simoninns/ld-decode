@@ -1,6 +1,6 @@
 /************************************************************************
 
-    converter.cpp
+    encoders.cpp
 
     ld-efm-encoder - EFM data encoder
     Copyright (C) 2025 Simon Inns
@@ -30,21 +30,11 @@
 
 #include "delay_lines.h"
 #include "frame.h"
-#include "converter.h"
+#include "encoders.h"
 
-Converter::Converter(int max_buffer_size) : max_buffer_size(max_buffer_size) {}
-
-void Converter::flush() {
-    input_buffer.clear();
-    output_buffer.clear();
-}
-
-bool Converter::is_ready() const {
-    return !output_buffer.isEmpty();
-}
 
 // Data24ToF1Frame class implementation
-Data24ToF1Frame::Data24ToF1Frame(int max_buffer_size) : Converter(max_buffer_size) {}
+Data24ToF1Frame::Data24ToF1Frame() {}
 
 void Data24ToF1Frame::push_frame(QVector<uint8_t> data) {
     if (data.size() != 24) {
@@ -54,7 +44,7 @@ void Data24ToF1Frame::push_frame(QVector<uint8_t> data) {
     process_queue();
 }
 
-QVector<uint8_t> Data24ToF1Frame::pop_frame() {
+F1Frame Data24ToF1Frame::pop_frame() {
     if (!is_ready()) {
         qFatal("Data24ToF1Frame::pop_frame(): No F1 frames are available.");
     }
@@ -66,22 +56,23 @@ void Data24ToF1Frame::process_queue() {
         QVector<uint8_t> data = input_buffer.dequeue();
         F1Frame f1_frame;
         f1_frame.set_data(data);
-        output_buffer.enqueue(f1_frame.get_data());
+        output_buffer.enqueue(f1_frame);
     }
+}
+
+bool Data24ToF1Frame::is_ready() const {
+    return !output_buffer.isEmpty();
 }
 
 // F1FrameToF2Frame class implementation
-F1FrameToF2Frame::F1FrameToF2Frame(int max_buffer_size) : Converter(max_buffer_size), delay_line2(), delay_line1(), delay_lineM() {}
+F1FrameToF2Frame::F1FrameToF2Frame() {}
 
-void F1FrameToF2Frame::push_frame(QVector<uint8_t> f1_frame_data) {
-    if (f1_frame_data.size() != 24) {
-        qFatal("F1FrameToF2Frame::push_frame(): Input must be a QVector of 24 integers.");
-    }
-    input_buffer.enqueue(f1_frame_data);
+void F1FrameToF2Frame::push_frame(F1Frame f1_frame) {
+    input_buffer.enqueue(f1_frame);
     process_queue();
 }
 
-QVector<uint8_t> F1FrameToF2Frame::pop_frame() {
+F2Frame F1FrameToF2Frame::pop_frame() {
     if (!is_ready()) {
         qFatal("F1FrameToF2Frame::pop_frame(): No F2 frames are available.");
     }
@@ -90,7 +81,11 @@ QVector<uint8_t> F1FrameToF2Frame::pop_frame() {
 
 void F1FrameToF2Frame::process_queue() {
     while (!input_buffer.isEmpty()) {
-        QVector<uint8_t> data = input_buffer.dequeue();        
+        // Pop the F1 frame and copy the data
+        F1Frame f1_frame = input_buffer.dequeue();
+        QVector<uint8_t> data = f1_frame.get_data();
+
+        // Process the data
         data = delay_line2.process(data);
         data = interleave(data);
         data = encoderC2(data);
@@ -99,40 +94,58 @@ void F1FrameToF2Frame::process_queue() {
         data = delay_line1.process(data);
         data = inverter(data);
 
+        // Put the resulting data into an F2 frame and push it to the output buffer
         F2Frame f2_frame;
         f2_frame.set_data(data);
-        output_buffer.enqueue(f2_frame.get_data());
+        output_buffer.enqueue(f2_frame);
     }
+}
+
+bool F1FrameToF2Frame::is_ready() const {
+    return !output_buffer.isEmpty();
 }
 
 // Perform the interleaving operation on the input data in accordance with
 // ECMA-130 issue 2 page 35 ("Interleaving")
 QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
     QVector<uint8_t> interleaved_data(24, 0);
+
     interleaved_data[0]  = data[0];
     interleaved_data[1]  = data[1];
+
     interleaved_data[2]  = data[6];
     interleaved_data[3]  = data[7];
+
     interleaved_data[4]  = data[12];
     interleaved_data[5]  = data[13];
+
     interleaved_data[6]  = data[18];
     interleaved_data[7]  = data[19];
+
     interleaved_data[8]  = data[2];
     interleaved_data[9]  = data[3];
+
     interleaved_data[10] = data[8];
     interleaved_data[11] = data[9];
+
     interleaved_data[12] = data[14];
     interleaved_data[13] = data[15];
+
     interleaved_data[14] = data[20];
     interleaved_data[15] = data[21];
+
     interleaved_data[16] = data[4];
     interleaved_data[17] = data[5];
+
     interleaved_data[18] = data[10];
     interleaved_data[19] = data[11];
+
     interleaved_data[20] = data[16];
     interleaved_data[21] = data[17];
+
     interleaved_data[22] = data[22];
     interleaved_data[23] = data[23];
+
     return interleaved_data;
 }
 
@@ -199,27 +212,24 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
 }
 
 // F2FrameToF3Frame class implementation
-F2FrameToF3Frame::F2FrameToF3Frame(int max_buffer_size) : Converter(max_buffer_size), section_index(0), frames_per_section(98), total_processed_sections(0) {}
+F2FrameToF3Frame::F2FrameToF3Frame() {
+    section_index = 0;
+    total_processed_sections = 0;
+
+    frames_per_section = 98;
+}
 
 // Input is 32 bytes of data from the F23 frame payload
-void F2FrameToF3Frame::push_frame(QVector<uint8_t> f2_frame_data) {
-    if (f2_frame_data.size() != 32) {
-        qFatal("F2FrameToF3Frame::push_frame(): Input must be a QVector of 32 integers.");
-    }
-    input_buffer.enqueue(f2_frame_data);
+void F2FrameToF3Frame::push_frame(F2Frame f2_frame) {
+    input_buffer.enqueue(f2_frame);
     process_queue();
 }
 
-// Ouput is 33 bytes of data for the F3 frame payload (1 subcode byte + 32 data bytes)
-QVector<uint8_t> F2FrameToF3Frame::pop_frame() {
+F3Frame F2FrameToF3Frame::pop_frame() {
     if (!is_ready()) {
         qFatal("F2FrameToF3Frame::pop_frame(): No F3 frames are available.");
     }
     return output_buffer.dequeue();
-}
-
-F3Frame::FrameType F2FrameToF3Frame::pop_frame_type() {
-    return output_frame_type_buffer.dequeue();
 }
 
 // Process the input queue of F2 frames into F3 frame sections
@@ -227,7 +237,7 @@ F3Frame::FrameType F2FrameToF3Frame::pop_frame_type() {
 // The remaining 96 frames are subcode frames.
 void F2FrameToF3Frame::process_queue() {
     while (!input_buffer.isEmpty()) {
-        QVector<uint8_t> f2_frame_data = input_buffer.dequeue();
+        F2Frame f2_frame = input_buffer.dequeue();
         F3Frame f3_frame;
 
         if (section_index == 0) {
@@ -239,9 +249,8 @@ void F2FrameToF3Frame::process_queue() {
             f3_frame.set_frame_type_as_subcode(0);
         }
 
-        f3_frame.set_data(f2_frame_data);
-        output_buffer.enqueue(f3_frame.get_data());
-        output_frame_type_buffer.enqueue(f3_frame.get_frame_type());
+        f3_frame.set_data(f2_frame.get_data());
+        output_buffer.enqueue(f3_frame);
 
         section_index++;
         if (section_index >= frames_per_section) {
@@ -251,27 +260,23 @@ void F2FrameToF3Frame::process_queue() {
     }
 }
 
+bool F2FrameToF3Frame::is_ready() const {
+    return !output_buffer.isEmpty();
+}
+
 // F3FrameToChannel class implementation
-F3FrameToChannel::F3FrameToChannel(int max_buffer_size) : Converter(max_buffer_size), dsv(0) {
+F3FrameToChannel::F3FrameToChannel(){
     // Output data is a string that represents bits
     // Since we are working with 14-bit EFM symbols, 3 bit merging symbols and
     // a 24 bit frame sync header - the output length of a channel frame is 588 bit (73.5 bytes)
     // so we can't use a QByteArray directly here without introducing unwanted padding
     output_data = "";
+    dsv = 0;
 }
 
-void F3FrameToChannel::push_frame(QVector<uint8_t> f3_frame_data) {
-    if (f3_frame_data.size() != 33) {
-        qFatal("F3FrameToChannel::push_frame(): Input must be a QVector of 33 integers.");
-    }
-    input_buffer.enqueue(f3_frame_data);
+void F3FrameToChannel::push_frame(F3Frame f3_frame) {
+    input_buffer.enqueue(f3_frame);
 
-    // Queue processed after the frame type is pushed
-    //process_queue();
-}
-
-void F3FrameToChannel::push_frame_type(F3Frame::FrameType frame_type) {
-    input_frame_type_buffer.enqueue(frame_type);
     process_queue();
 }
 
@@ -285,15 +290,15 @@ QVector<uint8_t> F3FrameToChannel::pop_frame() {
 void F3FrameToChannel::process_queue() {
     while (!input_buffer.isEmpty()) {
         // Pop the F3 frame data from the processing queue
-        QVector<uint8_t> f3_frame_data = input_buffer.dequeue();
-        F3Frame::FrameType frame_type = input_frame_type_buffer.dequeue();
+        F3Frame f3_frame = input_buffer.dequeue();
         QString current_efm = sync_header;
+        QVector<uint8_t> f3_frame_data = f3_frame.get_data();
 
         // Pick the subcode value or a sync symbol based on the frame type
         QString next_efm;    
-        if (frame_type == F3Frame::Subcode) {
+        if (f3_frame.get_frame_type() == F3Frame::Subcode) {
             next_efm = convert_8bit_to_efm(f3_frame_data[0]);
-        } else if (frame_type == F3Frame::Sync0) {
+        } else if (f3_frame.get_frame_type() == F3Frame::Sync0) {
             next_efm = convert_8bit_to_efm(256);
         } else {
             next_efm = convert_8bit_to_efm(257);
@@ -314,6 +319,10 @@ void F3FrameToChannel::process_queue() {
         // Flush the output data to the output buffer
         flush_output_data();
     }
+}
+
+bool F3FrameToChannel::is_ready() const {
+    return !output_buffer.isEmpty();
 }
 
 // Note: There are 257 EFM symbols: 0 to 255 and two additional sync0 and sync1 symbols

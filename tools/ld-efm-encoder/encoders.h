@@ -1,6 +1,6 @@
 /************************************************************************
 
-    converter.h
+    encoders.h
 
     ld-efm-encoder - EFM data encoder
     Copyright (C) 2025 Simon Inns
@@ -22,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef CONVERTER_H
-#define CONVERTER_H
+#ifndef ENCODERS_H
+#define ENCODERS_H
 
 #include <QVector>
 #include <QQueue>
@@ -45,42 +45,33 @@ template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
 template < size_t PAYLOAD > struct C2RS<255, PAYLOAD>
     : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11d, 0, 1, false);
 
-class Converter {
+class Data24ToF1Frame {
 public:
-    Converter(int max_buffer_size);
-    virtual void push_frame(QVector<uint8_t> frame) = 0;
-    virtual QVector<uint8_t> pop_frame() = 0;
-    virtual void flush();
-    virtual bool is_ready() const;
-
-protected:
-    virtual void process_queue() = 0;
-
-    QQueue<QVector<uint8_t>> input_buffer;
-    QQueue<QVector<uint8_t>> output_buffer;
-    int max_buffer_size;
-};
-
-class Data24ToF1Frame : public Converter {
-public:
-    Data24ToF1Frame(int max_buffer_size);
-    void push_frame(QVector<uint8_t> data) override;
-    QVector<uint8_t> pop_frame() override;
-
-protected:
-    void process_queue() override;
-};
-
-class F1FrameToF2Frame : public Converter {
-public:
-    F1FrameToF2Frame(int max_buffer_size);
-    void push_frame(QVector<uint8_t> f1_frame_data) override;
-    QVector<uint8_t> pop_frame() override;
-
-protected:
-    void process_queue() override;
+    Data24ToF1Frame();
+    void push_frame(QVector<uint8_t> data);
+    F1Frame pop_frame();
+    bool is_ready() const;
 
 private:
+    void process_queue();
+
+    QQueue<QVector<uint8_t>> input_buffer;
+    QQueue<F1Frame> output_buffer;
+};
+
+class F1FrameToF2Frame {
+public:
+    F1FrameToF2Frame();
+    void push_frame(F1Frame f1_frame);
+    F2Frame pop_frame();
+    bool is_ready() const;
+
+private:
+    void process_queue();
+
+    QQueue<F1Frame> input_buffer;
+    QQueue<F2Frame> output_buffer;
+
     QVector<uint8_t> interleave(QVector<uint8_t> data);
     QVector<uint8_t> inverter(QVector<uint8_t> data);
     QVector<uint8_t> encoderC2(QVector<uint8_t> data);
@@ -91,34 +82,37 @@ private:
     DelayLineM delay_lineM;
 };
 
-class F2FrameToF3Frame : public Converter {
+class F2FrameToF3Frame {
 public:
-    F2FrameToF3Frame(int max_buffer_size);
-    void push_frame(QVector<uint8_t> f2_frame_data) override;
-    QVector<uint8_t> pop_frame() override;
-    F3Frame::FrameType pop_frame_type();
-
-protected:
-    void process_queue() override;
+    F2FrameToF3Frame();
+    void push_frame(F2Frame f2_frame);
+    F3Frame pop_frame();
+    bool is_ready() const;
 
 private:
+    void process_queue();
+
+    QQueue<F2Frame> input_buffer;
+    QQueue<F3Frame> output_buffer;
+
     int section_index;
     int frames_per_section;
     int total_processed_sections;
-    QQueue<F3Frame::FrameType> output_frame_type_buffer;
 };
 
-class F3FrameToChannel : public Converter {
+class F3FrameToChannel {
 public:
-    F3FrameToChannel(int max_buffer_size);
-    void push_frame(QVector<uint8_t> f3_frame_data) override;
-    void push_frame_type(F3Frame::FrameType frame_type);
-    QVector<uint8_t> pop_frame() override;
-
-protected:
-    void process_queue() override;
+    F3FrameToChannel();
+    void push_frame(F3Frame f3_frame);
+    QVector<uint8_t> pop_frame();
+    bool is_ready() const;
 
 private:
+    void process_queue();
+
+    QQueue<F3Frame> input_buffer;
+    QQueue<QVector<uint8_t>> output_buffer;
+
     QString convert_8bit_to_efm(uint16_t value);
     int add_to_output_data(const QString& data, int dsv);
     QStringList get_possible_merging_bit_patterns(const QString& current_efm, const QString& next_efm);
@@ -127,11 +121,10 @@ private:
 
     QString output_data;
     int dsv;
-    QQueue<F3Frame::FrameType> input_frame_type_buffer;
 
     static const QString sync_header;
     static const QStringList efm_lut;
 };
 
-#endif // CONVERTER_H
+#endif // ENCODERS_H
 
