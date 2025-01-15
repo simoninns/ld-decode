@@ -59,7 +59,7 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
     // Prepare the decoders
     TvaluesToChannel t_values_to_channel;
     ChannelToF3Frame channel_to_f3;
-    // F3FrameToF2Frame f3_frame_to_f2;
+    F3FrameToF2Frame f3_frame_to_f2;
     // F2FrameToF1Frame f2_frame_to_f1;
     // F1FrameToData24 f1_frame_to_data24;
 
@@ -89,8 +89,16 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
         // Are there any F3 frames ready?
         if (channel_to_f3.is_ready()) {
             F3Frame f3_frame = channel_to_f3.pop_frame();
-            // f3_frame_to_f2.push_frame(f3_frame);
+            f3_frame_to_f2.push_frame(f3_frame);
             f3_frame_count++;
+        }
+
+        // Are there any F2 frames ready?
+        if (f3_frame_to_f2.is_ready()) {
+            F2Frame f2_frame = f3_frame_to_f2.pop_frame();
+            f2_frame.show_data();
+            // f2_frame_to_f1.push_frame(f2_frame);
+            f2_frame_count++;
         }
     }
 

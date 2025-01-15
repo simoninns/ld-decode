@@ -34,6 +34,7 @@
 
 #include "decoders.h"
 #include "frame.h"
+#include "delay_lines.h"
 
 TvaluesToChannel::TvaluesToChannel() {
     invalid_t_values_count = 0;
@@ -171,8 +172,6 @@ void ChannelToF3Frame::process_queue() {
                             f3_frame.set_frame_type_as_subcode(subcode);
                         }
 
-                        f3_frame.show_data();
-
                         // Add the frame to the output buffer
                         output_buffer.enqueue(f3_frame);
                     } else {
@@ -275,3 +274,43 @@ const QStringList ChannelToF3Frame::efm_lut = {
     "01000000010010", "00001000010010", "00010000010010", "00100000010010",
     "00100000000001", "00000000010010"
 };
+
+F3FrameToF2Frame::F3FrameToF2Frame() {
+    invalid_f3_frames_count = 0;
+    valid_f3_frames_count = 0;
+}
+
+void F3FrameToF2Frame::push_frame(F3Frame data) {
+    // Add the data to the input buffer
+    input_buffer.enqueue(data);
+
+    // Process the queue
+    process_queue();
+}
+
+F2Frame F3FrameToF2Frame::pop_frame() {
+    // Return the first item in the output buffer
+    return output_buffer.dequeue();
+}
+
+bool F3FrameToF2Frame::is_ready() const {
+    // Return true if the output buffer is not empty
+    return !output_buffer.isEmpty();
+}
+
+void F3FrameToF2Frame::process_queue() {
+    // Process the input buffer
+    while (!input_buffer.isEmpty()) {
+        // We should do something with the subcode here
+        // but for now we'll just pass the frame through
+        F3Frame f3_frame = input_buffer.dequeue();
+
+        F2Frame f2_frame;
+        f2_frame.set_data(f3_frame.get_data());
+
+        valid_f3_frames_count++;
+
+        // Add the frame to the output buffer
+        output_buffer.enqueue(f2_frame);
+    }
+}

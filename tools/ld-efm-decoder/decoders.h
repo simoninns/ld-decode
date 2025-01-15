@@ -74,4 +74,23 @@ private:
     static const QStringList efm_lut;
 };
 
+class F3FrameToF2Frame {
+public:
+    F3FrameToF2Frame();
+    void push_frame(F3Frame data);
+    F2Frame pop_frame();
+    bool is_ready() const;
+    uint32_t get_invalid_f3_frames_count() const { return invalid_f3_frames_count; }
+    uint32_t get_valid_f3_frames_count() const { return valid_f3_frames_count; }
+
+private:
+    void process_queue();
+
+    QQueue<F3Frame> input_buffer;
+    QQueue<F2Frame> output_buffer;
+
+    uint32_t invalid_f3_frames_count;
+    uint32_t valid_f3_frames_count;
+};
+
 #endif // DECODERS_H

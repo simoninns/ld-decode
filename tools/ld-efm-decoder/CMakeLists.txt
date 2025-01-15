@@ -3,6 +3,7 @@ add_executable(ld-efm-decoder
     efmdecoder.cpp
     decoders.cpp
     frame.cpp
+    delay_lines.cpp
 )
 
 target_include_directories(ld-efm-decoder PRIVATE .)
