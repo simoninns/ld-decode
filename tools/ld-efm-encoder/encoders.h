@@ -95,6 +95,7 @@ private:
     QVector<uint8_t> inverter(QVector<uint8_t> data);
     QVector<uint8_t> encoderC2(QVector<uint8_t> data);
     QVector<uint8_t> encoderC1(QVector<uint8_t> data);
+    QVector<uint8_t> reorder_c2_parity_bytes(QVector<uint8_t> data);
 
     DelayLine2 delay_line2;
     DelayLine1 delay_line1;

@@ -85,7 +85,7 @@ bool AudioToData::open() {
 
             // Change the sample values
             left_sample++;
-            //right_sample--;
+            right_sample--;
         }
     }
 

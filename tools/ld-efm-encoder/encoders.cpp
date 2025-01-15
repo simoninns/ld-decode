@@ -88,6 +88,14 @@ void F1FrameToF2Frame::process_queue() {
         data = delay_line2.process(data);
         data = interleave(data);
         data = encoderC2(data);
+
+        // Note: This is a little weird... according to ECMA-130 issue 2 page 35 the parity bytes
+        // from the C2 encoder are inserted into the data stream in byte positions 12-15.  But, if
+        // I don't leave them at the end of the data in positions 20-23 then ld-process-efm fails?
+        //
+        // Uncomment the next line to do it according to the spec
+        //data = reorder_c2_parity_bytes(data);
+
         data = delay_lineM.process(data);
         data = encoderC1(data);
         data = delay_line1.process(data);
@@ -177,11 +185,7 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     // Convert the std::vector back to a QVector
     data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
 
-    // Ensure the output is 28 bytes long
-    if (data.size() != 28) {
-        qFatal("F1FrameToF2Frame::encoderC1(): Output of EZPWD must be 32 integers.");
-    }
-
+    // Note: ezpwd appends the 4 parity bytes to the end of the data
     return data;
 }
 
@@ -202,12 +206,22 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
     // Convert the std::vector back to a QVector
     data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
 
-    // Ensure the output is 32 bytes long
-    if (data.size() != 32) {
-        qFatal("F1FrameToF2Frame::encoderC1(): Output of EZPWD must be 32 integers.");
-    }
-
+    // Note: ezpwd appends the 4 parity bytes to the end of the data
     return data;
+}
+
+QVector<uint8_t> F1FrameToF2Frame::reorder_c2_parity_bytes(QVector<uint8_t> data) {
+    // The C2 encoder generates parity bytes and places them at the end of the data
+    // but the ECM-130 issue 2 page 35 states that the parity bytes should be placed
+    // in byte positions 12-15.  This function reorders the parity bytes to match the
+    // specification.
+
+    if (data.size() != 28) {
+        qFatal("F1FrameToF2Frame::reorder_c2_parity_bytes(): Data must be a QVector of 28 integers in the range 0-255.");
+    }
+ 
+    // reordered data = First 12 bytes + Last 4 bytes + Middle 12 bytes
+    return data.mid(0, 12) + data.mid(23,4) + data.mid(12, 12);
 }
 
 // F2FrameToF3Frame class implementation
