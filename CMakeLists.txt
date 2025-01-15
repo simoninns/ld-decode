@@ -129,6 +129,7 @@ add_subdirectory(tools/ld-process-efm)
 add_subdirectory(tools/ld-process-vbi)
 add_subdirectory(tools/ld-process-vits)
 add_subdirectory(tools/ld-efm-encoder)
+add_subdirectory(tools/ld-efm-decoder)
 add_subdirectory(tools/library)
 
 if(BUILD_TESTING)

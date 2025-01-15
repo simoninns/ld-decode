@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-process-efm is free software: you can redistribute it and/or
+    ld-efm-encoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -94,7 +94,7 @@ void F1FrameToF2Frame::process_queue() {
         // I don't leave them at the end of the data in positions 20-23 then ld-process-efm fails?
         //
         // Uncomment the next line to do it according to the spec
-        //data = reorder_c2_parity_bytes(data);
+        data = reorder_c2_parity_bytes(data);
 
         data = delay_lineM.process(data);
         data = encoderC1(data);

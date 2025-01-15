@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-efm-encoder - EFM data encoder
+    ld-efm-decoder - EFM data decoder
     Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-encoder is free software: you can redistribute it and/or
+    ld-efm-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -29,7 +29,7 @@
 #include <QThread>
 
 #include "logging.h"
-#include "efmencoder.h"
+#include "efmdecoder.h"
 
 int main(int argc, char *argv[])
 {
@@ -42,14 +42,14 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-efm-encoder");
+    QCoreApplication::setApplicationName("ld-efm-decoder");
     QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        "ld-efm-encoder - EFM data encoder\n"
+        "ld-efm-decoder - EFM data decoder\n"
         "\n"
         "(c)2025 Simon Inns\n"
         "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
@@ -61,16 +61,10 @@ int main(int argc, char *argv[])
 
     // -- Positional arguments --
     // Positional argument to specify input WAV file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input WAV file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM file"));
 
     // Positional argument to specify output audio file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output EFM file"));
-
-    // Add the new optional argument for audio test data
-    QCommandLineOption audio_test_data_option(QStringList() << "t" << "audio-testdata",
-                                           QCoreApplication::translate("main", "Generate audio test data of (1 frame is 2x16-bit L&R samples)"),
-                                           QCoreApplication::translate("main", "frames"));
-    parser.addOption(audio_test_data_option);
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output data file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -81,36 +75,20 @@ int main(int argc, char *argv[])
     // Get the filename arguments from the parser
     QString input_filename;
     QString output_filename;
-    bool gen_audio_test_data = false;
-    int32_t audio_test_frames = 0;
     QStringList positional_arguments = parser.positionalArguments();
-    if (parser.isSet(audio_test_data_option)) {
-        if (positional_arguments.count() != 1) {
-            qWarning() << "You must specify the output EFM filename when using the audio-testdata option";
-            return 1;
-        }
-        input_filename = "";
-        output_filename = positional_arguments.at(0);
-        gen_audio_test_data = true;
-        audio_test_frames = parser.value(audio_test_data_option).toInt();
-        if (audio_test_frames <= 0) {
-            qWarning() << "Invalid frame size specified for audio-testdata - must be greater than 0";
-            return 1;
-        }
-    } else {
-        if (positional_arguments.count() != 2) {
-            qWarning() << "You must specify the input WAV filename and the output EFM filename";
-            return 1;
-        }
-        input_filename = positional_arguments.at(0);
-        output_filename = positional_arguments.at(1);
+    
+    if (positional_arguments.count() != 2) {
+        qWarning() << "You must specify the input EFM filename and the output data filename";
+        return 1;
     }
+    input_filename = positional_arguments.at(0);
+    output_filename = positional_arguments.at(1);
 
     // Perform the processing
-    qInfo() << "Beginning EFM encoding of" << (parser.isSet(audio_test_data_option) ? "test data" : input_filename);
-    EfmEncoder efm_encoder;
+    qInfo() << "Beginning EFM decoding of" << input_filename;
+    EfmDecoder efm_decoder;
 
-    if (!efm_encoder.encode(input_filename, output_filename, gen_audio_test_data, audio_test_frames)) {
+    if (!efm_decoder.decode(input_filename, output_filename)) {
         return 1;
     }
 

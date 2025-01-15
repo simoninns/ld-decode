@@ -1,13 +1,13 @@
 /************************************************************************
 
-    audio.h
+    efmdecoder.h
 
-    ld-efm-encoder - EFM data encoder
+    ld-efm-decoder - EFM data encoder
     Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-encoder is free software: you can redistribute it and/or
+    ld-efm-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,26 +22,17 @@
 
 ************************************************************************/
 
-#ifndef AUDIO_H
-#define AUDIO_H
+#ifndef EFMDECODER_H
+#define EFMDECODER_H
 
-#include <QVector>
 #include <QString>
-#include <QByteArray>
 
-class AudioToData {
+class EfmDecoder
+{
 public:
-    AudioToData(const QString &filename, bool audio_test, int32_t audio_test_frames);
-    bool open();
-    void close();
-    QVector<uint8_t> read_24_bytes();
-    int frames_remaining() const;
+    EfmDecoder();
 
-private:
-    QString _filename;
-    QByteArray audioData;
-    bool _audio_test;
-    int32_t _audio_test_frames;
+    bool decode(QString input_fileName, QString output_fileName);
 };
 
-#endif // AUDIO_H
+#endif // EFMDECODER_H
