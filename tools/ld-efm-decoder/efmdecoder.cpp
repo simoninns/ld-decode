@@ -60,7 +60,7 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
     TvaluesToChannel t_values_to_channel;
     ChannelToF3Frame channel_to_f3;
     F3FrameToF2Frame f3_frame_to_f2;
-    // F2FrameToF1Frame f2_frame_to_f1;
+    F2FrameToF1Frame f2_frame_to_f1;
     // F1FrameToData24 f1_frame_to_data24;
 
     uint32_t f1_frame_count = 0;
@@ -96,9 +96,16 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
         // Are there any F2 frames ready?
         if (f3_frame_to_f2.is_ready()) {
             F2Frame f2_frame = f3_frame_to_f2.pop_frame();
-            f2_frame.show_data();
-            // f2_frame_to_f1.push_frame(f2_frame);
+            f2_frame_to_f1.push_frame(f2_frame);
             f2_frame_count++;
+        }
+
+        // Are there any F1 frames ready?
+        if (f2_frame_to_f1.is_ready()) {
+            F1Frame f1_frame = f2_frame_to_f1.pop_frame();
+            f1_frame.show_data();
+            // f1_frame_to_data24.push_frame(f1_frame);
+            f1_frame_count++;
         }
     }
 
@@ -106,6 +113,9 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
     qInfo() << "Decoding complete";
     qInfo() << "Processed" << t_values_to_channel.get_valid_t_values_count() << "Valid T-Values and" << t_values_to_channel.get_invalid_t_values_count() << "Invalid T-Values";
     qInfo() << "Processed" << channel_to_f3.get_valid_channel_frames_count() << "Valid Channel Frames and" << channel_to_f3.get_invalid_channel_frames_count() << "Invalid Channel Frames";
+    qInfo() << "Processed" << f3_frame_to_f2.get_valid_f3_frames_count() << "Valid F3 Frames and" << f3_frame_to_f2.get_invalid_f3_frames_count() << "Invalid F3 Frames";
+    qInfo() << "Processed" << f2_frame_to_f1.get_valid_f2_frames_count() << "Valid F2 Frames and" << f2_frame_to_f1.get_invalid_f2_frames_count() << "Invalid F2 Frames";
+    qInfo() << "Processed" << f1_frame_count << "F1 Frames," << f2_frame_count << "F2 Frames," << f3_frame_count << "F3 Frames," << channel_byte_count << "Channel Bytes";
 
     // Close the input and output files
     input_file.close();

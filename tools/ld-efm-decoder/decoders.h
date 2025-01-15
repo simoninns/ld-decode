@@ -28,8 +28,41 @@
 #include <QVector>
 #include <QQueue>
 #include <QByteArray>
+#include <cstdint>
 
 #include "frame.h"
+#include "delay_lines.h"
+#include "ezpwd/rs_base"
+#include "ezpwd/rs"
+
+// ezpwd configuration is:
+// NAME, TYPE, SYMBOLS, PAYLOAD, POLY, INIT, FCR, AGR
+
+// To find the integer representation of the polynomial P(x)=x^8+x^4+x^3+x^2+1
+// treat the coefficients as binary digits, where each coefficient corresponds to a power of x,
+// starting from x^0 on the rightmost side. If there is no term for a specific power of x, its coefficient is 0.
+//
+// Steps:
+//     Write the polynomial in terms of its binary representation:
+//     P(x)=x^8+x^4+x^3+x^2+1
+//
+//     The coefficients from x^8 down to x^0 are: 1,0,0,0,1,1,1,0,1.
+//
+//     Form the binary number from the coefficients:
+//     Binary representation: 100011101
+
+//     Convert the binary number to its decimal (integer) equivalent:
+//     0b100011101 = 0x11D = 285
+
+// ezpwd C1 ECMA-130 CIRC configuration
+template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
+template < size_t PAYLOAD > struct C1RS<255, PAYLOAD>
+    : public __RS(C1RS, uint8_t, 255, PAYLOAD, 0x11D, 0, 1, false);
+
+// ezpwd C2 ECMA-130 CIRC configuration
+template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
+template < size_t PAYLOAD > struct C2RS<255, PAYLOAD>
+    : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11D, 0, 1, false);
 
 class TvaluesToChannel {
 public:
@@ -91,6 +124,33 @@ private:
 
     uint32_t invalid_f3_frames_count;
     uint32_t valid_f3_frames_count;
+};
+
+class F2FrameToF1Frame {
+public:
+    F2FrameToF1Frame();
+    void push_frame(F2Frame data);
+    F1Frame pop_frame();
+    bool is_ready() const;
+    uint32_t get_invalid_f2_frames_count() const { return invalid_f2_frames_count; }
+    uint32_t get_valid_f2_frames_count() const { return valid_f2_frames_count; }
+
+private:
+    void process_queue();
+    QVector<uint8_t> deinterleave(QVector<uint8_t> interleaved_data);
+    QVector<uint8_t> inverter(QVector<uint8_t> data);
+    QVector<uint8_t> decoderC2(QVector<uint8_t> data);
+    QVector<uint8_t> decoderC1(QVector<uint8_t> data);
+
+    DelayLine2 delay_line2;
+    DelayLine1 delay_line1;
+    DelayLineM delay_lineM;
+
+    QQueue<F2Frame> input_buffer;
+    QQueue<F1Frame> output_buffer;
+
+    uint32_t invalid_f2_frames_count;
+    uint32_t valid_f2_frames_count;
 };
 
 #endif // DECODERS_H

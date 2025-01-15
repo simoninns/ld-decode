@@ -52,4 +52,4 @@ CMakeLists.txt.user*
 /library/tbc/testvbidecoder/testvbidecoder
 /library/tbc/testvitcdecoder/testvitcdecoder
 /ld-efm-encoder/ld-efm-encoder
-
+/ld-efm-decoder/ld-efm-decoder
