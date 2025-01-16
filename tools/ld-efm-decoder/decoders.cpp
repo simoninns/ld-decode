@@ -383,28 +383,23 @@ QVector<uint8_t> F2FrameToF1Frame::deinterleave(QVector<uint8_t> interleaved_dat
     data[8] = interleaved_data[10];
     data[9] = interleaved_data[11];
 
-    // Parity Q0 = interleaved_data[12]
-    // Parity Q1 = interleaved_data[13]
-    // Parity Q2 = interleaved_data[14]
-    // Parity Q3 = interleaved_data[15]
+    data[14] = interleaved_data[12];
+    data[15] = interleaved_data[13];
 
-    data[14] = interleaved_data[16];
-    data[15] = interleaved_data[17];
+    data[20] = interleaved_data[14];
+    data[21] = interleaved_data[15];
 
-    data[20] = interleaved_data[18];
-    data[21] = interleaved_data[19];
+    data[4] = interleaved_data[16];
+    data[5] = interleaved_data[17];
 
-    data[4] = interleaved_data[20];
-    data[5] = interleaved_data[21];
+    data[10] = interleaved_data[18];
+    data[11] = interleaved_data[19];
 
-    data[10] = interleaved_data[22];
-    data[11] = interleaved_data[23];
+    data[16] = interleaved_data[20];
+    data[17] = interleaved_data[21];
 
-    data[16] = interleaved_data[24];
-    data[17] = interleaved_data[25];
-
-    data[22] = interleaved_data[26];
-    data[23] = interleaved_data[27];
+    data[22] = interleaved_data[22];
+    data[23] = interleaved_data[23];
 
     return data;
 }
@@ -424,29 +419,19 @@ QVector<uint8_t> F2FrameToF1Frame::inverter(QVector<uint8_t> data) {
 QVector<uint8_t> F2FrameToF1Frame::decoderC2(QVector<uint8_t> data) {
     // The error correction encoder C2 decodes a (28,24) Reed-Solomon code.
     // There are 24 bytes of input and four parity bytes Q in bytes 12-15
-    // Note: 12-15 is in the middle of the data, not at the end!
 
-    if (data.size() != 24+4) {
+    if (data.size() != 28) {
         qFatal("F2FrameToF1Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
     }
 
-    //  In: 12 data bytes + 4 parity bytes + 12 data bytes 
-    // Out: 12 data bytes + 12 data bytes + 4 parity bytes
-    data = data.mid(0, 12) + data.mid(16, 12) + data.mid(12, 4);
-
-    C2RS<255,255-4> c2rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
-
-    // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(data.begin(), data.end());
-
     // Decode the data
-    c2rs.decode(tmp_data);
+    data = circ.c2_decode(data);
 
-    // Convert the std::vector back to a QVector and strip the parity bytes
-    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end()-4);
+    // Strip the parity bytes
+    data = data.mid(0, 28-4);
 
-    if (data.size() != 24) {
-        qFatal("F2FrameToF1Frame::encoderC2(): ezpwd returned an incorrect number of bytes.");
+    if (data.size() != 28-4) {
+        qFatal("F2FrameToF1Frame::encoderC2(): Attempted to return an incorrect number of bytes!");
     }
 
     return data;
@@ -456,23 +441,18 @@ QVector<uint8_t> F2FrameToF1Frame::decoderC1(QVector<uint8_t> data) {
     // The error correction decoder C1 decodes a (32,28) Reed-Solomon code.
     // There are 28 bytes of input data and 4 parity bytes P in bytes 28-31.
 
-    if (data.size() != 28+4) {
+    if (data.size() != 32) {
         qFatal("F2FrameToF1Frame::encoderC1(): Data must be a QVector of 32 integers in the range 0-255.");
     }
 
-    C1RS<255,255-4> c1rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
+    // Decode the data
+    data = circ.c1_decode(data);
 
-    // Convert the QVector to a std::vector for the ezpwd library
-    //std::vector<uint8_t> tmp_data(data.begin(), data.end());
-    //c1rs.decode(tmp_data);
+    // Strip the parity bytes
+    data = data.mid(0, 32-4);
 
-    // Convert the std::vector back to a QVector and strip the parity bytes
-    //data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end()-4);
-
-    data = data.mid(0, 28);
-
-    if (data.size() != 28) {
-        qFatal("F2FrameToF1Frame::encoderC1(): ezpwd returned an incorrect number of bytes.");
+    if (data.size() != 32-4) {
+        qFatal("F2FrameToF1Frame::encoderC1(): Attempted to return an incorrect number of bytes!");
     }
 
     return data;

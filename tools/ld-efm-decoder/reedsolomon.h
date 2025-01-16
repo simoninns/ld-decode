@@ -2,12 +2,12 @@
 
     reedsolomon.h
 
-    ld-efm-encoder - EFM data encoder
+    ld-efm-decoder - EFM data decoder
     Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-encoder is free software: you can redistribute it and/or
+    ld-efm-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -52,7 +52,10 @@ public:
     ReedSolomon();
 
     QVector<uint8_t> c1_encode(QVector<uint8_t> input);
+    QVector<uint8_t> c1_decode(QVector<uint8_t> input);
+
     QVector<uint8_t> c2_encode(QVector<uint8_t> input);
+    QVector<uint8_t> c2_decode(QVector<uint8_t> input);
 
 private:
     // ezpwd C1 ECMA-130 CIRC configuration

@@ -182,7 +182,7 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
 
     //  In: 12 data bytes + 12 data bytes + 4 parity bytes
     // Out: 12 data bytes + 4 parity bytes + 12 data bytes 
-    data = data.mid(0, 12) + data.mid(23,4) + data.mid(12, 12);
+    //data = data.mid(0, 12) + data.mid(23,4) + data.mid(12, 12);
 
     return data;
 }
