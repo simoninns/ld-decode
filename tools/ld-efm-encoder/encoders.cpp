@@ -178,16 +178,7 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     data = data.mid(0, 12) + data.mid(16, 12);
     data.resize(24);
 
-    C2RS<255,255-4> c2rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
-
-    // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(data.begin(), data.end());
-
-    // Encode the data
-    c2rs.encode(tmp_data);
-
-    // Convert the std::vector back to a QVector
-    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+    data = circ.c2_encode(data);
 
     //  In: 12 data bytes + 12 data bytes + 4 parity bytes
     // Out: 12 data bytes + 4 parity bytes + 12 data bytes 
@@ -204,16 +195,8 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
         qFatal("F1FrameToF2Frame::encoderC1(): Data must be a QVector of 28 integers in the range 0-255.");
     }
 
-    C1RS<255,255-4> c1rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
+    data = circ.c1_encode(data);
 
-    // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(data.begin(), data.end());
-    c1rs.encode(tmp_data);
-
-    // Convert the std::vector back to a QVector
-    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
-
-    // Note: ezpwd appends the 4 parity bytes to the end of the data
     return data;
 }
 

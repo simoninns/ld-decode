@@ -28,41 +28,10 @@
 #include <QVector>
 #include <QQueue>
 #include <QMap>
-#include <cstdint>
 
 #include "delay_lines.h"
 #include "frame.h"
-#include "ezpwd/rs_base"
-#include "ezpwd/rs"
-
-// ezpwd configuration is:
-// NAME, TYPE, SYMBOLS, PAYLOAD, POLY, INIT, FCR, AGR
-
-// To find the integer representation of the polynomial P(x)=x^8+x^4+x^3+x^2+1
-// treat the coefficients as binary digits, where each coefficient corresponds to a power of x,
-// starting from x^0 on the rightmost side. If there is no term for a specific power of x, its coefficient is 0.
-//
-// Steps:
-//     Write the polynomial in terms of its binary representation:
-//     P(x)=x^8+x^4+x^3+x^2+1
-//
-//     The coefficients from x^8 down to x^0 are: 1,0,0,0,1,1,1,0,1.
-//
-//     Form the binary number from the coefficients:
-//     Binary representation: 100011101
-
-//     Convert the binary number to its decimal (integer) equivalent:
-//     0b100011101 = 0x11D = 285
-
-// ezpwd C1 ECMA-130 CIRC configuration
-template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
-template < size_t PAYLOAD > struct C1RS<255, PAYLOAD>
-    : public __RS(C1RS, uint8_t, 255, PAYLOAD, 0x11D, 0, 1, false);
-
-// ezpwd C2 ECMA-130 CIRC configuration
-template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
-template < size_t PAYLOAD > struct C2RS<255, PAYLOAD>
-    : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11D, 0, 1, false);
+#include "reedsolomon.h"
 
 class Data24ToF1Frame {
 public:
@@ -100,6 +69,8 @@ private:
     DelayLine2 delay_line2;
     DelayLine1 delay_line1;
     DelayLineM delay_lineM;
+
+    ReedSolomon circ;
 };
 
 class F2FrameToF3Frame {
