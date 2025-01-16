@@ -58,8 +58,9 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
     ChannelToF3Frame channel_to_f3;
     F3FrameToF2Frame f3_frame_to_f2;
     F2FrameToF1Frame f2_frame_to_f1;
-    // F1FrameToData24 f1_frame_to_data24;
+    F1FrameToData24 f1_frame_to_data24;
 
+    uint32_t data24_count = 0;
     uint32_t f1_frame_count = 0;
     uint32_t f2_frame_count = 0;
     uint32_t f3_frame_count = 0;
@@ -103,8 +104,15 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
         if (f2_frame_to_f1.is_ready()) {
             F1Frame f1_frame = f2_frame_to_f1.pop_frame();
             f1_frame.show_data();
-            // f1_frame_to_data24.push_frame(f1_frame);
+            f1_frame_to_data24.push_frame(f1_frame);
             f1_frame_count++;
+        }
+
+        // Are there any data frames ready?
+        if (f1_frame_to_data24.is_ready()) {
+            QByteArray data = f1_frame_to_data24.pop_frame();
+            output_file.write(data);
+            data24_count += 1;
         }
     }
 
@@ -114,6 +122,8 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
     qInfo() << "Processed" << channel_to_f3.get_valid_channel_frames_count() << "Valid Channel Frames and" << channel_to_f3.get_invalid_channel_frames_count() << "Invalid Channel Frames";
     qInfo() << "Processed" << f3_frame_to_f2.get_valid_f3_frames_count() << "Valid F3 Frames and" << f3_frame_to_f2.get_invalid_f3_frames_count() << "Invalid F3 Frames";
     qInfo() << "Processed" << f2_frame_to_f1.get_valid_f2_frames_count() << "Valid F2 Frames and" << f2_frame_to_f1.get_invalid_f2_frames_count() << "Invalid F2 Frames";
+    qInfo() << "Processed" << f1_frame_to_data24.get_valid_f1_frames_count() << "Valid F1 Frames and" << f1_frame_to_data24.get_invalid_f1_frames_count() << "Invalid F1 Frames";
+    
     qInfo() << "Processed" << f1_frame_count << "F1 Frames," << f2_frame_count << "F2 Frames," << f3_frame_count << "F3 Frames," << channel_byte_count << "Channel Bytes";
 
     // Close the input and output files

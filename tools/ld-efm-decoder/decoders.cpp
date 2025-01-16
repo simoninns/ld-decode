@@ -457,3 +457,45 @@ QVector<uint8_t> F2FrameToF1Frame::decoderC1(QVector<uint8_t> data) {
 
     return data;
 }
+
+F1FrameToData24::F1FrameToData24() {
+    invalid_f1_frames_count = 0;
+    valid_f1_frames_count = 0;
+}
+
+void F1FrameToData24::push_frame(F1Frame data) {
+    // Add the data to the input buffer
+    input_buffer.enqueue(data);
+
+    // Process the queue
+    process_queue();
+}
+
+QByteArray F1FrameToData24::pop_frame() {
+    // Return the first item in the output buffer
+    return output_buffer.dequeue();
+}
+
+bool F1FrameToData24::is_ready() const {
+    // Return true if the output buffer is not empty
+    return !output_buffer.isEmpty();
+}
+
+void F1FrameToData24::process_queue() {
+    // Process the input buffer
+    while (!input_buffer.isEmpty()) {
+        F1Frame f1_frame = input_buffer.dequeue();
+        QVector<uint8_t> data = f1_frame.get_data();
+
+        // Convert the data to a QByteArray
+        QByteArray byte_data;
+        for (int i = 0; i < data.size(); i++) {
+            byte_data.append(data[i]);
+        }
+
+        // Add the data to the output buffer
+        output_buffer.enqueue(byte_data);
+        
+        valid_f1_frames_count++;
+    }
+}

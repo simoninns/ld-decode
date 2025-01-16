@@ -125,4 +125,23 @@ private:
     uint32_t valid_f2_frames_count;
 };
 
+class F1FrameToData24 {
+public:
+    F1FrameToData24();
+    void push_frame(F1Frame data);
+    QByteArray pop_frame();
+    bool is_ready() const;
+    uint32_t get_invalid_f1_frames_count() const { return invalid_f1_frames_count; }
+    uint32_t get_valid_f1_frames_count() const { return valid_f1_frames_count; }
+
+private:
+    void process_queue();
+
+    QQueue<F1Frame> input_buffer;
+    QQueue<QByteArray> output_buffer;
+
+    uint32_t invalid_f1_frames_count;
+    uint32_t valid_f1_frames_count;
+};
+
 #endif // DECODERS_H
