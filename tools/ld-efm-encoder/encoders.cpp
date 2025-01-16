@@ -88,14 +88,6 @@ void F1FrameToF2Frame::process_queue() {
         data = delay_line2.process(data);
         data = interleave(data);
         data = encoderC2(data);
-
-        // Note: This is a little weird... according to ECMA-130 issue 2 page 35 the parity bytes
-        // from the C2 encoder are inserted into the data stream in byte positions 12-15.  But, if
-        // I don't leave them at the end of the data in positions 20-23 then ld-process-efm fails?
-        //
-        // Uncomment the next line to do it according to the spec
-        data = reorder_c2_parity_bytes(data);
-
         data = delay_lineM.process(data);
         data = encoderC1(data);
         data = delay_line1.process(data);
@@ -115,7 +107,7 @@ bool F1FrameToF2Frame::is_ready() const {
 // Perform the interleaving operation on the input data in accordance with
 // ECMA-130 issue 2 page 35 ("Interleaving")
 QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
-    QVector<uint8_t> interleaved_data(24, 0);
+    QVector<uint8_t> interleaved_data(28, 0);
 
     interleaved_data[0]  = data[0];
     interleaved_data[1]  = data[1];
@@ -135,23 +127,28 @@ QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
     interleaved_data[10] = data[8];
     interleaved_data[11] = data[9];
 
-    interleaved_data[12] = data[14];
-    interleaved_data[13] = data[15];
+    interleaved_data[12] = 0; // Parity Q0
+    interleaved_data[13] = 0;
+    interleaved_data[14] = 0;
+    interleaved_data[15] = 0; // Parity Q3
 
-    interleaved_data[14] = data[20];
-    interleaved_data[15] = data[21];
+    interleaved_data[16] = data[14];
+    interleaved_data[17] = data[15];
 
-    interleaved_data[16] = data[4];
-    interleaved_data[17] = data[5];
+    interleaved_data[18] = data[20];
+    interleaved_data[19] = data[21];
 
-    interleaved_data[18] = data[10];
-    interleaved_data[19] = data[11];
+    interleaved_data[20] = data[4];
+    interleaved_data[21] = data[5];
 
-    interleaved_data[20] = data[16];
-    interleaved_data[21] = data[17];
+    interleaved_data[22] = data[10];
+    interleaved_data[23] = data[11];
 
-    interleaved_data[22] = data[22];
-    interleaved_data[23] = data[23];
+    interleaved_data[24] = data[16];
+    interleaved_data[25] = data[17];
+
+    interleaved_data[26] = data[22];
+    interleaved_data[27] = data[23];
 
     return interleaved_data;
 }
@@ -172,20 +169,30 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     // The error correction encoder C2 generates a (28,24) Reed-Solomon code.
     // There are four parity bytes Q output from 24 bytes of input.
 
-    if (data.size() != 24) {
-        qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 24 integers in the range 0-255.");
+    if (data.size() != 28) {
+        qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
     }
+
+    //  In: 12 data bytes + 4 empty bytes + 12 data bytes 
+    // Out: 12 data bytes + 12 data bytes
+    data = data.mid(0, 12) + data.mid(16, 12);
+    data.resize(24);
 
     C2RS<255,255-4> c2rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
 
     // Convert the QVector to a std::vector for the ezpwd library
     std::vector<uint8_t> tmp_data(data.begin(), data.end());
+
+    // Encode the data
     c2rs.encode(tmp_data);
 
     // Convert the std::vector back to a QVector
     data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
 
-    // Note: ezpwd appends the 4 parity bytes to the end of the data
+    //  In: 12 data bytes + 12 data bytes + 4 parity bytes
+    // Out: 12 data bytes + 4 parity bytes + 12 data bytes 
+    data = data.mid(0, 12) + data.mid(23,4) + data.mid(12, 12);
+
     return data;
 }
 
@@ -208,20 +215,6 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
 
     // Note: ezpwd appends the 4 parity bytes to the end of the data
     return data;
-}
-
-QVector<uint8_t> F1FrameToF2Frame::reorder_c2_parity_bytes(QVector<uint8_t> data) {
-    // The C2 encoder generates parity bytes and places them at the end of the data
-    // but the ECM-130 issue 2 page 35 states that the parity bytes should be placed
-    // in byte positions 12-15.  This function reorders the parity bytes to match the
-    // specification.
-
-    if (data.size() != 28) {
-        qFatal("F1FrameToF2Frame::reorder_c2_parity_bytes(): Data must be a QVector of 28 integers in the range 0-255.");
-    }
- 
-    // reordered data = First 12 bytes + Last 4 bytes + Middle 12 bytes
-    return data.mid(0, 12) + data.mid(23,4) + data.mid(12, 12);
 }
 
 // F2FrameToF3Frame class implementation

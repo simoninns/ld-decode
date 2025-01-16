@@ -153,12 +153,12 @@ QVector<uint8_t> DelayLineM::process(QVector<uint8_t> input_data) {
 
     QVector<uint8_t> output_data(28, 0);
 
-    output_data[0] = input_data[0];
-
-    for (int i = 1; i < 28; ++i) {
+    for (int i = 0; i < 27; ++i) {
         delay_buffers[i].enqueue(input_data[i]);
         output_data[i] = delay_buffers[i].dequeue();
     }
+
+    output_data[27] = input_data[27];
 
     return output_data;
 }

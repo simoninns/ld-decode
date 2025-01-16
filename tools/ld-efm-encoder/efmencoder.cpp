@@ -82,7 +82,7 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename, bool au
         if (data24_to_f1.is_ready()) {
             // Pop the F1 frame, count it and push it to the next converter
             F1Frame f1_frame = data24_to_f1.pop_frame();
-            //f1_frame.show_data();
+            f1_frame.show_data();
             f1_frame_count++;
             f1_frame_to_f2.push_frame(f1_frame);
         }

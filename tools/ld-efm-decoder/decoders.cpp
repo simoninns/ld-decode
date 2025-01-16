@@ -365,43 +365,48 @@ void F2FrameToF1Frame::process_queue() {
 QVector<uint8_t> F2FrameToF1Frame::deinterleave(QVector<uint8_t> interleaved_data) {
     QVector<uint8_t> data(24, 0);
 
-    data[0] = interleaved_data[0];
-    data[1] = interleaved_data[1];
+    data[ 0] = interleaved_data[0];
+    data[ 1] = interleaved_data[1];
 
-    data[2] = interleaved_data[6]; 
-    data[3] = interleaved_data[7];
+    data[ 6] = interleaved_data[2];
+    data[ 7] = interleaved_data[3];
 
-    data[4] = interleaved_data[16]; 
-    data[5] = interleaved_data[17];
+    data[12] = interleaved_data[4];
+    data[13] = interleaved_data[5];
 
-    data[6] = interleaved_data[22]; 
-    data[7] = interleaved_data[23]; 
+    data[18] = interleaved_data[6];
+    data[19] = interleaved_data[7];
 
-    data[8] = interleaved_data[2]; 
-    data[9] = interleaved_data[3];
+    data[2] = interleaved_data[8];
+    data[3] = interleaved_data[9];
 
-    data[10] = interleaved_data[8]; 
-    data[11] = interleaved_data[9];
+    data[8] = interleaved_data[10];
+    data[9] = interleaved_data[11];
 
-    data[12] = interleaved_data[18]; 
-    data[13] = interleaved_data[19];
+    // Parity Q0 = interleaved_data[12]
+    // Parity Q1 = interleaved_data[13]
+    // Parity Q2 = interleaved_data[14]
+    // Parity Q3 = interleaved_data[15]
 
-    data[14] = interleaved_data[24]; 
-    data[15] = interleaved_data[25];  
+    data[14] = interleaved_data[16];
+    data[15] = interleaved_data[17];
 
-    data[16] = interleaved_data[4]; 
-    data[17] = interleaved_data[5]; 
+    data[20] = interleaved_data[18];
+    data[21] = interleaved_data[19];
 
-    data[18] = interleaved_data[10];
-    data[19] = interleaved_data[11]; 
+    data[4] = interleaved_data[20];
+    data[5] = interleaved_data[21];
 
-    data[20] = interleaved_data[20]; 
-    data[21] = interleaved_data[21]; 
+    data[10] = interleaved_data[22];
+    data[11] = interleaved_data[23];
 
-    data[22] = interleaved_data[26]; 
-    data[23] = interleaved_data[27]; 
+    data[16] = interleaved_data[24];
+    data[17] = interleaved_data[25];
 
-    return interleaved_data;
+    data[22] = interleaved_data[26];
+    data[23] = interleaved_data[27];
+
+    return data;
 }
 
 // Invert the P and Q parity bytes in accordance with
@@ -425,23 +430,16 @@ QVector<uint8_t> F2FrameToF1Frame::decoderC2(QVector<uint8_t> data) {
         qFatal("F2FrameToF1Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
     }
 
-    // Copy the parity bytes
-    QVector<uint8_t> parity = data.mid(12, 4);
-
-    // Move bytes 16-31 to 12-27
-    for (int i = 0; i < 16; ++i) {
-        data[12+i] = data[16+i];
-    }
-
-    // Add the parity bytes to the end of the data (28-31)
-    for (int i = 0; i < 4; ++i) {
-        data[28+i] = parity[i];
-    }
+    //  In: 12 data bytes + 4 parity bytes + 12 data bytes 
+    // Out: 12 data bytes + 12 data bytes + 4 parity bytes
+    data = data.mid(0, 12) + data.mid(16, 12) + data.mid(12, 4);
 
     C2RS<255,255-4> c2rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
 
     // Convert the QVector to a std::vector for the ezpwd library
     std::vector<uint8_t> tmp_data(data.begin(), data.end());
+
+    // Decode the data
     c2rs.decode(tmp_data);
 
     // Convert the std::vector back to a QVector and strip the parity bytes
@@ -465,11 +463,13 @@ QVector<uint8_t> F2FrameToF1Frame::decoderC1(QVector<uint8_t> data) {
     C1RS<255,255-4> c1rs; // Accepts up to 251 data bytes and returns and additional 4 parity bytes
 
     // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(data.begin(), data.end());
-    c1rs.decode(tmp_data);
+    //std::vector<uint8_t> tmp_data(data.begin(), data.end());
+    //c1rs.decode(tmp_data);
 
     // Convert the std::vector back to a QVector and strip the parity bytes
-    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end()-4);
+    //data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end()-4);
+
+    data = data.mid(0, 28);
 
     if (data.size() != 28) {
         qFatal("F2FrameToF1Frame::encoderC1(): ezpwd returned an incorrect number of bytes.");
