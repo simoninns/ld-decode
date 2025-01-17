@@ -53,6 +53,13 @@ F1Frame Data24ToF1Frame::pop_frame() {
 void Data24ToF1Frame::process_queue() {
     while (!input_buffer.isEmpty()) {
         QVector<uint8_t> data = input_buffer.dequeue();
+
+        // ECMA-130 issue 2 page 16 - Clause 16
+        // All byte pairs are swapped by the F1 Frame encoder
+        for (int i = 0; i < data.size(); i += 2) {
+            std::swap(data[i], data[i + 1]);
+        }
+
         F1Frame f1_frame;
         f1_frame.set_data(data);
         output_buffer.enqueue(f1_frame);
@@ -87,9 +94,20 @@ void F1FrameToF2Frame::process_queue() {
         // Process the data
         data = delay_line2.process(data);
         data = interleave(data);
+        
+        // Use the next two lines to remove the interleave
+        // data.resize(28);
+        // data = data.mid(0, 12) + QVector<uint8_t>(4, 0) + data.mid(12, 12);
+        
         data = encoderC2(data);
+
         data = delay_lineM.process(data);
         data = encoderC1(data);
+
+        // Use the next two lines to remove the C1 encoding
+        // data.resize(32);
+        // data = data.mid(0, 28) + QVector<uint8_t>(4, 0);
+
         data = delay_line1.process(data);
         data = inverter(data);
 
@@ -107,48 +125,77 @@ bool F1FrameToF2Frame::is_ready() const {
 // Perform the interleaving operation on the input data in accordance with
 // ECMA-130 issue 2 page 35 ("Interleaving")
 QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
+    // We get 24 bytes in and return 28 bytes out
     QVector<uint8_t> interleaved_data(28, 0);
 
-    interleaved_data[0]  = data[0];
+    // Interleaving is done as follows:
+    // Input byte -> Output byte
+    // 0 -> 0
+    // 1 -> 1
+    // 2 -> 6
+    // 3 -> 7
+    // 4 -> 16
+    // 5 -> 17
+    // 6 -> 22
+    // 7 -> 23
+    // 8 -> 2
+    // 9 -> 3
+    // 10 -> 8
+    // 11 -> 9
+    // 12 -> 18
+    // 13 -> 19
+    // 14 -> 24
+    // 15 -> 25
+    // 16 -> 4
+    // 17 -> 5
+    // 18 -> 10
+    // 19 -> 11
+    // 20 -> 20
+    // 21 -> 21
+    // 22 -> 26
+    // 23 -> 27
+
+    interleaved_data[0]  = data[0]; 
     interleaved_data[1]  = data[1];
 
-    interleaved_data[2]  = data[6];
-    interleaved_data[3]  = data[7];
+    interleaved_data[6]  = data[2];
+    interleaved_data[7]  = data[3];
 
-    interleaved_data[4]  = data[12];
-    interleaved_data[5]  = data[13];
+    interleaved_data[16] = data[4];
+    interleaved_data[17] = data[5];
 
-    interleaved_data[6]  = data[18];
-    interleaved_data[7]  = data[19];
+    interleaved_data[22]  = data[6];
+    interleaved_data[23]  = data[7];
 
-    interleaved_data[8]  = data[2];
-    interleaved_data[9]  = data[3];
+    interleaved_data[2] = data[8];
+    interleaved_data[3] = data[9];
 
-    interleaved_data[10] = data[8];
-    interleaved_data[11] = data[9];
+    interleaved_data[8] = data[10];
+    interleaved_data[9] = data[11];
 
-    interleaved_data[12] = 0; // Parity Q0
-    interleaved_data[13] = 0;
-    interleaved_data[14] = 0;
-    interleaved_data[15] = 0; // Parity Q3
+    interleaved_data[18]  = data[12]; 
+    interleaved_data[19]  = data[13];
 
-    interleaved_data[16] = data[14];
-    interleaved_data[17] = data[15];
+    interleaved_data[24] = data[14];
+    interleaved_data[25] = data[15];
 
-    interleaved_data[18] = data[20];
-    interleaved_data[19] = data[21];
+    interleaved_data[4] = data[16];
+    interleaved_data[5] = data[17];
 
-    interleaved_data[20] = data[4];
-    interleaved_data[21] = data[5];
+    interleaved_data[10]  = data[18];
+    interleaved_data[11]  = data[19];
 
-    interleaved_data[22] = data[10];
-    interleaved_data[23] = data[11];
-
-    interleaved_data[24] = data[16];
-    interleaved_data[25] = data[17];
+    interleaved_data[20] = data[20];
+    interleaved_data[21] = data[21];
 
     interleaved_data[26] = data[22];
     interleaved_data[27] = data[23];
+
+    // Set the parity bytes to 0
+    interleaved_data[12] = 0;
+    interleaved_data[13] = 0;
+    interleaved_data[14] = 0;
+    interleaved_data[15] = 0;
 
     return interleaved_data;
 }
@@ -156,6 +203,7 @@ QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
 // Invert the P and Q parity bytes in accordance with
 // ECMA-130 issue 2 page 35
 QVector<uint8_t> F1FrameToF2Frame::inverter(QVector<uint8_t> data) {
+    // Invert bytes 12-15 and 28-31
     for (int i = 12; i < 16; ++i) {
         data[i] = ~data[i] & 0xFF;
     }
@@ -179,6 +227,10 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     data.resize(24);
 
     data = circ.c2_encode(data);
+
+    if (data.size() != 28) {
+        qFatal("F1FrameToF2Frame::encoderC2(): ezpwd didn't give us 28 bytes back from 24!");
+    }
 
     //  In: 12 data bytes + 12 data bytes + 4 parity bytes
     // Out: 12 data bytes + 4 parity bytes + 12 data bytes 

@@ -28,43 +28,6 @@
 
 #include "delay_lines.h"
 
-DelayLine::DelayLine(int size) : size(size), buffer(size) {}
-
-void DelayLine::add(QVector<uint8_t> input) {
-    for (int i = 0; i < input.size(); ++i) {
-        buffer[(index + i) % size] = input[i];
-    }
-    index = (index + input.size()) % size;
-}
-
-QVector<uint8_t> DelayLine::get(int delay) {
-    QVector<uint8_t> output;
-    for (int i = 0; i < delay; ++i) {
-        output.append(buffer[(index + size - delay + i) % size]);
-    }
-    return output;
-}
-
-DelayLines::DelayLines(int num_lines, int size) {
-    for (int i = 0; i < num_lines; ++i) {
-        lines.append(DelayLine(size));
-    }
-}
-
-void DelayLines::add(QVector<uint8_t> input) {
-    for (int i = 0; i < lines.size(); ++i) {
-        lines[i].add(input);
-    }
-}
-
-QVector<QVector<uint8_t>> DelayLines::get(int delay) {
-    QVector<QVector<uint8_t>> output;
-    for (int i = 0; i < lines.size(); ++i) {
-        output.append(lines[i].get(delay));
-    }
-    return output;
-}
-
 // DelayLine2 class implementation - This is the "Delay of 2 bytes" delay line shown
 // on page 35 of ECMA-130 issue 2
 DelayLine2::DelayLine2() {
@@ -153,11 +116,13 @@ QVector<uint8_t> DelayLineM::process(QVector<uint8_t> input_data) {
 
     QVector<uint8_t> output_data(28, 0);
 
-    output_data[0] = input_data[0];
-
-    for (int i = 1; i < 28; ++i) {
-        delay_buffers[i].enqueue(input_data[i]);
-        output_data[i] = delay_buffers[i].dequeue();
+    for (int i = 0; i < 28; ++i) {
+        if (i == 0) {
+            output_data[0] = input_data[0];
+        } else {
+            delay_buffers[i].enqueue(input_data[i]);
+            output_data[i] = delay_buffers[i].dequeue();
+        }
     }
 
     return output_data;

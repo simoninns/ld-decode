@@ -40,9 +40,9 @@ QVector<uint8_t> ReedSolomon::c1_encode(QVector<uint8_t> data) {
     c1rs.encode(tmp_data);
 
     // Convert the std::vector back to a QVector
-    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+    QVector<uint8_t> return_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
 
-    return data;
+    return return_data;
 }
 
 // Perform a C2 Reed-Solomon encoding operation on the input data
@@ -53,7 +53,7 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
     c2rs.encode(tmp_data);
 
     // Convert the std::vector back to a QVector
-    data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+    QVector<uint8_t> return_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
 
-    return data;
+    return return_data;
 }

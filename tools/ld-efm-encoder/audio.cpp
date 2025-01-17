@@ -64,28 +64,39 @@ bool AudioToData::open() {
         // Data is big-endian, so the first byte is the most significant byte and the first bit
         // is the most significant bit
 
+        // audioData.clear();
+        // int16_t left_sample = 0;
+        // int16_t right_sample = 0;
+
+        // qInfo() << "AudioToData::open(): Generating audio test data with" << _audio_test_frames << "frames.";
+        // qInfo() << "AudioToData::open(): Audio test data will be 16-bit stereo at 44.1kHz totalling" << _audio_test_frames * 4 << "bytes.";
+        // qInfo() << "AudioToData::open():" << _audio_test_frames << "frames contains" << _audio_test_frames * 2 << "samples.";
+
+        // for (uint32_t i = 0; i < _audio_test_frames; ++i) {
+        //     uint8_t left_msb = static_cast<uint8_t>((left_sample >> 8) & 0xFF);
+        //     uint8_t left_lsb = static_cast<uint8_t>(left_sample & 0xFF);
+        //     uint8_t right_msb = static_cast<uint8_t>((right_sample >> 8) & 0xFF);
+        //     uint8_t right_lsb = static_cast<uint8_t>(right_sample & 0xFF);
+
+        //     audioData.append(left_msb);
+        //     audioData.append(left_lsb);
+        //     audioData.append(right_msb);
+        //     audioData.append(right_lsb);
+
+        //     // Change the sample values
+        //     left_sample++;
+        //     right_sample--;
+        // }
+
+        // Just generate a simple test pattern for now...
         audioData.clear();
-        int16_t left_sample = 0;
-        int16_t right_sample = 0;
-
-        qInfo() << "AudioToData::open(): Generating audio test data with" << _audio_test_frames << "frames.";
-        qInfo() << "AudioToData::open(): Audio test data will be 16-bit stereo at 44.1kHz totalling" << _audio_test_frames * 4 << "bytes.";
-        qInfo() << "AudioToData::open():" << _audio_test_frames << "frames contains" << _audio_test_frames * 2 << "samples.";
-
-        for (uint32_t i = 0; i < _audio_test_frames; ++i) {
-            uint8_t left_msb = static_cast<uint8_t>((left_sample >> 8) & 0xFF);
-            uint8_t left_lsb = static_cast<uint8_t>(left_sample & 0xFF);
-            uint8_t right_msb = static_cast<uint8_t>((right_sample >> 8) & 0xFF);
-            uint8_t right_lsb = static_cast<uint8_t>(right_sample & 0xFF);
-
-            audioData.append(left_msb);
-            audioData.append(left_lsb);
-            audioData.append(right_msb);
-            audioData.append(right_lsb);
-
-            // Change the sample values
-            left_sample++;
-            right_sample--;
+        uint32_t byte_count = 0;
+        for (uint32_t i = 0; i < _audio_test_frames*4; ++i) {
+            audioData.append(byte_count);
+            byte_count++;
+            if (byte_count > 255) {
+                byte_count = 0;
+            }
         }
     }
 

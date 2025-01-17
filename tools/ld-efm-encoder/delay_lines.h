@@ -30,28 +30,6 @@
 #include <QMap>
 #include <cstdint>
 
-class DelayLine {
-public:
-    DelayLine(int size);
-    void add(QVector<uint8_t> input);
-    QVector<uint8_t> get(int delay);
-
-private:
-    int size;
-    int index;
-    QVector<uint8_t> buffer;
-};
-
-class DelayLines {
-public:
-    DelayLines(int num_lines, int size);
-    void add(QVector<uint8_t> input);
-    QVector<QVector<uint8_t>> get(int delay);
-
-private:
-    QVector<DelayLine> lines;
-};
-
 class DelayLine2 {
 public:
     DelayLine2();
