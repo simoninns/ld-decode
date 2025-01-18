@@ -105,8 +105,8 @@ void F1FrameToF2Frame::process_queue() {
         data = encoderC1(data);
 
         // Use the next two lines to remove the C1 encoding
-        // data.resize(32);
-        // data = data.mid(0, 28) + QVector<uint8_t>(4, 0);
+        //data.resize(32);
+        //data = data.mid(0, 28) + QVector<uint8_t>(4, 0);
 
         data = delay_line1.process(data);
         data = inverter(data);
@@ -221,20 +221,23 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
         qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
     }
 
-    //  In: 12 data bytes + 4 empty bytes + 12 data bytes 
-    // Out: 12 data bytes + 12 data bytes
-    data = data.mid(0, 12) + data.mid(16, 12);
-    data.resize(24);
+    // QString dataString;
+    // for (int i = 0; i < data.size(); ++i) {
+    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
+    // }
+    // qInfo().noquote() << " C2 Input data:" << dataString.trimmed();
 
     data = circ.c2_encode(data);
+
+    // dataString.clear();
+    // for (int i = 0; i < data.size(); ++i) {
+    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
+    // }
+    // qInfo().noquote() << "C2 Output data:" << dataString.trimmed();
 
     if (data.size() != 28) {
         qFatal("F1FrameToF2Frame::encoderC2(): ezpwd didn't give us 28 bytes back from 24!");
     }
-
-    //  In: 12 data bytes + 12 data bytes + 4 parity bytes
-    // Out: 12 data bytes + 4 parity bytes + 12 data bytes 
-    //data = data.mid(0, 12) + data.mid(23,4) + data.mid(12, 12);
 
     return data;
 }
@@ -247,7 +250,22 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
         qFatal("F1FrameToF2Frame::encoderC1(): Data must be a QVector of 28 integers in the range 0-255.");
     }
 
+    // QString dataString;
+    // for (int i = 0; i < data.size(); ++i) {
+    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
+    // }
+    // qInfo().noquote() << " C1 Input data:" << dataString.trimmed();
+
+    // Add space for the parity bytes
+    data.resize(32);
+
     data = circ.c1_encode(data);
+    
+    // dataString.clear();
+    // for (int i = 0; i < data.size(); ++i) {
+    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
+    // }
+    // qInfo().noquote() << "C1 Output data:" << dataString.trimmed();
 
     return data;
 }

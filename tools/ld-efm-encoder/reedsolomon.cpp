@@ -32,28 +32,41 @@
 ReedSolomon::ReedSolomon() {}
 
 // Perform a C1 Reed-Solomon encoding operation on the input data
+// This is a (32,28) Reed-Solomon code
 QVector<uint8_t> ReedSolomon::c1_encode(QVector<uint8_t> data) {
     // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(data.begin(), data.end());
+    std::vector<uint8_t> tmp_data(data.begin(), data.end()-4);
 
     // Encode the data
     c1rs.encode(tmp_data);
 
-    // Convert the std::vector back to a QVector
-    QVector<uint8_t> return_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+    // Extract parity symbols
+    std::vector<uint8_t> parity(tmp_data.begin() + 28, tmp_data.end());
 
-    return return_data;
+    // Insert the parity bytes back into the original data (bytes 28-31)
+    for (int i = 0; i < 4; ++i) {
+        data[28 + i] = parity[i];
+    }
+
+    return data;
 }
 
 // Perform a C2 Reed-Solomon encoding operation on the input data
+// This is a (28,24) Reed-Solomon code
 QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
     // Convert the QVector to a std::vector for the ezpwd library
     std::vector<uint8_t> tmp_data(data.begin(), data.end());
 
+    // Encode to generate parity bytes
     c2rs.encode(tmp_data);
 
-    // Convert the std::vector back to a QVector
-    QVector<uint8_t> return_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+    // Extract parity symbols
+    std::vector<uint8_t> parity(tmp_data.begin() + 24, tmp_data.end());
 
-    return return_data;
+    // Insert the parity bytes back into the original data (bytes 12-15)
+    for (int i = 0; i < 4; ++i) {
+        data[12 + i] = parity[i];
+    }
+
+    return data;
 }
