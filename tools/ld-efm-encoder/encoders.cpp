@@ -217,6 +217,8 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     // The error correction encoder C2 generates a (28,24) Reed-Solomon code.
     // There are four parity bytes Q output from 24 bytes of input.
 
+    // Note: The data already has space for the parity bytes in the middle
+    // 12 + 4 + 12 = 28
     if (data.size() != 28) {
         qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
     }
@@ -234,6 +236,9 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
     // }
     // qInfo().noquote() << "C2 Output data:" << dataString.trimmed();
+
+    // Test the encoding by decoding the data with the following line:
+    //QVector<uint8_t> decoded_data = circ.c2_decode(data);
 
     if (data.size() != 28) {
         qFatal("F1FrameToF2Frame::encoderC2(): ezpwd didn't give us 28 bytes back from 24!");

@@ -52,7 +52,10 @@ public:
     ReedSolomon();
 
     QVector<uint8_t> c1_encode(QVector<uint8_t> input);
+    QVector<uint8_t> c1_decode(QVector<uint8_t> input);
+
     QVector<uint8_t> c2_encode(QVector<uint8_t> input);
+    QVector<uint8_t> c2_decode(QVector<uint8_t> input);
 
 private:
     // ezpwd C1 ECMA-130 CIRC configuration
