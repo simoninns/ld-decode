@@ -125,35 +125,8 @@ bool F1FrameToF2Frame::is_ready() const {
 // Perform the interleaving operation on the input data in accordance with
 // ECMA-130 issue 2 page 35 ("Interleaving")
 QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
-    // We get 24 bytes in and return 28 bytes out
-    QVector<uint8_t> interleaved_data(28, 0);
-
-    // Interleaving is done as follows:
-    // Input byte -> Output byte
-    // 0 -> 0
-    // 1 -> 1
-    // 2 -> 6
-    // 3 -> 7
-    // 4 -> 16
-    // 5 -> 17
-    // 6 -> 22
-    // 7 -> 23
-    // 8 -> 2
-    // 9 -> 3
-    // 10 -> 8
-    // 11 -> 9
-    // 12 -> 18
-    // 13 -> 19
-    // 14 -> 24
-    // 15 -> 25
-    // 16 -> 4
-    // 17 -> 5
-    // 18 -> 10
-    // 19 -> 11
-    // 20 -> 20
-    // 21 -> 21
-    // 22 -> 26
-    // 23 -> 27
+    // We take 24 bytes in and return 24 bytes out
+    QVector<uint8_t> interleaved_data(24, 0);
 
     interleaved_data[0]  = data[0]; 
     interleaved_data[1]  = data[1];
@@ -161,11 +134,11 @@ QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
     interleaved_data[6]  = data[2];
     interleaved_data[7]  = data[3];
 
-    interleaved_data[16] = data[4];
-    interleaved_data[17] = data[5];
+    interleaved_data[12] = data[4];
+    interleaved_data[13] = data[5];
 
-    interleaved_data[22]  = data[6];
-    interleaved_data[23]  = data[7];
+    interleaved_data[18] = data[6];
+    interleaved_data[19] = data[7];
 
     interleaved_data[2] = data[8];
     interleaved_data[3] = data[9];
@@ -173,29 +146,23 @@ QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
     interleaved_data[8] = data[10];
     interleaved_data[9] = data[11];
 
-    interleaved_data[18]  = data[12]; 
-    interleaved_data[19]  = data[13];
+    interleaved_data[14] = data[12]; 
+    interleaved_data[15] = data[13];
 
-    interleaved_data[24] = data[14];
-    interleaved_data[25] = data[15];
+    interleaved_data[20] = data[14];
+    interleaved_data[21] = data[15];
 
     interleaved_data[4] = data[16];
     interleaved_data[5] = data[17];
 
-    interleaved_data[10]  = data[18];
-    interleaved_data[11]  = data[19];
+    interleaved_data[10] = data[18];
+    interleaved_data[11] = data[19];
 
-    interleaved_data[20] = data[20];
-    interleaved_data[21] = data[21];
+    interleaved_data[16] = data[20];
+    interleaved_data[17] = data[21];
 
-    interleaved_data[26] = data[22];
-    interleaved_data[27] = data[23];
-
-    // Set the parity bytes to 0
-    interleaved_data[12] = 0;
-    interleaved_data[13] = 0;
-    interleaved_data[14] = 0;
-    interleaved_data[15] = 0;
+    interleaved_data[22] = data[22];
+    interleaved_data[23] = data[23];
 
     return interleaved_data;
 }
@@ -217,10 +184,9 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     // The error correction encoder C2 generates a (28,24) Reed-Solomon code.
     // There are four parity bytes Q output from 24 bytes of input.
 
-    // Note: The data already has space for the parity bytes in the middle
-    // 12 + 4 + 12 = 28
-    if (data.size() != 28) {
-        qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
+    // We expect 24 bytes of input data (12+12)
+    if (data.size() != 24) {
+        qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 24 integers in the range 0-255.");
     }
 
     // QString dataString;
@@ -241,7 +207,7 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
     //QVector<uint8_t> decoded_data = circ.c2_decode(data);
 
     if (data.size() != 28) {
-        qFatal("F1FrameToF2Frame::encoderC2(): ezpwd didn't give us 28 bytes back from 24!");
+        qFatal("F1FrameToF2Frame::encoderC2(): CIRC C2 encoding failed - output data is not 28 bytes long.");
     }
 
     return data;

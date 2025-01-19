@@ -75,11 +75,11 @@ bool EfmEncoder::encode(QString input_filename, QString output_filename, bool au
     while (!(wav_data_vector = audio_data.read_24_bytes()).isEmpty()) {
         audio_data_count += 24;
 
-        // QString dataString;
-        // for (int i = 0; i < wav_data_vector.size(); ++i) {
-        //     dataString.append(QString("%1 ").arg(wav_data_vector[i], 2, 16, QChar('0')));
-        // }
-        // qDebug().noquote() << "Input data:" << dataString.trimmed();
+        QString dataString;
+        for (int i = 0; i < wav_data_vector.size(); ++i) {
+            dataString.append(QString("%1 ").arg(wav_data_vector[i], 2, 16, QChar('0')));
+        }
+        qDebug().noquote() << "Input data:" << dataString.trimmed();
 
         // Push the data to the first converter
         data24_to_f1.push_frame(wav_data_vector);
