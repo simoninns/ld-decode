@@ -105,13 +105,15 @@ private:
     QQueue<QVector<uint8_t>> output_buffer;
 
     QString convert_8bit_to_efm(uint16_t value);
-    int add_to_output_data(const QString& data, int dsv);
+    int32_t add_to_output_data(const QString& data);
     QStringList get_possible_merging_bit_patterns(const QString& current_efm, const QString& next_efm);
-    QString choose_merging_bits(const QString& current_efm, const QString& next_efm, int dsv);
+    int32_t calculate_dsv_delta(const QString data);
+    QString choose_merging_bits(const QString& current_efm, const QString& next_efm);
     void flush_output_data();
 
     QString output_data;
     int dsv;
+    bool dsv_direction;
 
     static const QString sync_header;
     static const QStringList efm_lut;
