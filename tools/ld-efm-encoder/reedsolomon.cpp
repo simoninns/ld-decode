@@ -73,7 +73,7 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
     // The effect of this is that the last 4 bytes of the input data become the parity
     // and we don't loose any data when the decoder removes the middle 4 bytes.
     //
-    // Note: This works because you can recover 4 bytes using RS(32,28) provided you
+    // Note: This works because you can recover 4 bytes using RS(28,24) provided you
     // know the positions of the missing bytes in advance.
     //
     // The ECMA-130 doesn't specify how the C2 parity bytes are generated, so this
@@ -95,9 +95,10 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
     // Mark the parity byte positions as erasures (12-15)
     std::vector<int> erasures = {12, 13, 14, 15};  // 0-based indices of "missing" bytes
 
-    // Decode and correct erasures
-    bool success = c2rs.decode(tmp_data, erasures);
+    // Decode and correct erasures (i.e. insert the missing parity bytes in the middle)
+    c2rs.decode(tmp_data, erasures);
 
+    // Copy the data back to a QVector
     QVector<uint8_t> output_data(tmp_data.begin(), tmp_data.end());
     return output_data;
 }

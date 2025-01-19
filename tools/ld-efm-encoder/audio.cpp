@@ -53,6 +53,13 @@ bool AudioToData::open() {
         }
 
         audioData = file.readAll();
+
+        // The longest possible delay of data through the encoder (according to ECMA-130 issue 2 page 34) is
+        // 108 F1 Frames (the shortest is 3 F1 Frames).  Since an F1 frame is 24 8-bit bytes we need to pad
+        // the incoming data by 108 * 24 bytes to ensure we have enough data to process = 2592 bytes
+        // Otherwise we will loose audio data at the end of the file
+        audioData.append(QByteArray(2592, 0));
+
         file.close();
     } else {
         // This an audio test, so we generate the audio data based
