@@ -31,17 +31,14 @@
 
 class AudioToData {
 public:
-    AudioToData(const QString &filename, bool audio_test, int32_t audio_test_frames);
+    AudioToData(const QString filename);
     bool open();
     void close();
     QVector<uint8_t> read_24_bytes();
-    int frames_remaining() const;
 
 private:
+    QFile file;
     QString _filename;
-    QByteArray audioData;
-    bool _audio_test;
-    int32_t _audio_test_frames;
 };
 
 #endif // AUDIO_H

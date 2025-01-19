@@ -1,6 +1,6 @@
 add_executable(ld-efm-encoder
     main.cpp
-    efmencoder.cpp
+    efm_processor.cpp
     frame.cpp
     audio.cpp
     delay_lines.cpp

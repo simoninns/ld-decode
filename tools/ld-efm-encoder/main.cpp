@@ -29,7 +29,7 @@
 #include <QThread>
 
 #include "logging.h"
-#include "efmencoder.h"
+#include "efm_processor.h"
 
 int main(int argc, char *argv[])
 {
@@ -60,17 +60,11 @@ int main(int argc, char *argv[])
     addStandardDebugOptions(parser);
 
     // -- Positional arguments --
-    // Positional argument to specify input WAV file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input WAV file"));
+    // Positional argument to specify input data file
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input audio data file"));
 
     // Positional argument to specify output audio file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output EFM file"));
-
-    // Add the new optional argument for audio test data
-    QCommandLineOption audio_test_data_option(QStringList() << "t" << "audio-testdata",
-                                           QCoreApplication::translate("main", "Generate audio test data of (1 frame is 2x16-bit L&R samples)"),
-                                           QCoreApplication::translate("main", "frames"));
-    parser.addOption(audio_test_data_option);
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -81,36 +75,20 @@ int main(int argc, char *argv[])
     // Get the filename arguments from the parser
     QString input_filename;
     QString output_filename;
-    bool gen_audio_test_data = false;
-    int32_t audio_test_frames = 0;
+
     QStringList positional_arguments = parser.positionalArguments();
-    if (parser.isSet(audio_test_data_option)) {
-        if (positional_arguments.count() != 1) {
-            qWarning() << "You must specify the output EFM filename when using the audio-testdata option";
-            return 1;
-        }
-        input_filename = "";
-        output_filename = positional_arguments.at(0);
-        gen_audio_test_data = true;
-        audio_test_frames = parser.value(audio_test_data_option).toInt();
-        if (audio_test_frames <= 0) {
-            qWarning() << "Invalid frame size specified for audio-testdata - must be greater than 0";
-            return 1;
-        }
-    } else {
-        if (positional_arguments.count() != 2) {
-            qWarning() << "You must specify the input WAV filename and the output EFM filename";
-            return 1;
-        }
-        input_filename = positional_arguments.at(0);
-        output_filename = positional_arguments.at(1);
+
+    if (positional_arguments.count() != 2) {
+        qWarning() << "You must specify the input data filename and the output EFM filename";
+        return 1;
     }
+    input_filename = positional_arguments.at(0);
+    output_filename = positional_arguments.at(1);
 
     // Perform the processing
-    qInfo() << "Beginning EFM encoding of" << (parser.isSet(audio_test_data_option) ? "test data" : input_filename);
-    EfmEncoder efm_encoder;
+    EfmProcessor efm_processor;
 
-    if (!efm_encoder.encode(input_filename, output_filename, gen_audio_test_data, audio_test_frames)) {
+    if (!efm_processor.process(input_filename, output_filename)) {
         return 1;
     }
 
