@@ -189,22 +189,22 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
         qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 24 integers in the range 0-255.");
     }
 
-    // QString dataString;
-    // for (int i = 0; i < data.size(); ++i) {
-    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
-    // }
-    // qInfo().noquote() << " C2 Input data:" << dataString.trimmed();
+    QString dataString;
+    for (int i = 0; i < data.size(); ++i) {
+        dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
+    }
+    qInfo().noquote() << " C2 Input data:" << dataString.trimmed();
 
     data = circ.c2_encode(data);
 
-    // dataString.clear();
-    // for (int i = 0; i < data.size(); ++i) {
-    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
-    // }
-    // qInfo().noquote() << "C2 Output data:" << dataString.trimmed();
+    dataString.clear();
+    for (int i = 0; i < data.size(); ++i) {
+        dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
+    }
+    qInfo().noquote() << "C2 Output data:" << dataString.trimmed();
 
     // Test the encoding by decoding the data with the following line:
-    //QVector<uint8_t> decoded_data = circ.c2_decode(data);
+    QVector<uint8_t> decoded_data = circ.c2_decode(data);
 
     if (data.size() != 28) {
         qFatal("F1FrameToF2Frame::encoderC2(): CIRC C2 encoding failed - output data is not 28 bytes long.");
