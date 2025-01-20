@@ -245,16 +245,12 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
 // F2FrameToF3Frame class implementation
 F2FrameToF3Frame::F2FrameToF3Frame() {
     symbol_number = 0;
-    current_frame = 0;
-    abs_frame = 0;
-    current_track = 1; // This is a constant for now
     total_processed_sections = 0;
 
     frames_per_section = 98;
 
-    // Initialize the subcode object with the current track number
-    // and Q-mode 1 (CD audio)
-    subcode.begin_new_track(current_track, 1);
+    // Initialize the subcode object
+    subcode.begin_new_track(1, 1); // Track #1, Q mode 1 (CD audio)
 }
 
 // Input is 32 bytes of data from the F23 frame payload
@@ -284,20 +280,18 @@ void F2FrameToF3Frame::process_queue() {
             f3_frame.set_frame_type_as_sync1();
         } else {
             // Generate the subcode byte
-            uint8_t subcode_bytes = subcode.get_symbol(symbol_number, current_frame, abs_frame);
-            f3_frame.set_frame_type_as_subcode(subcode_bytes);
+            uint8_t subcode_byte = subcode.get_subcode_byte(symbol_number);
+            f3_frame.set_frame_type_as_subcode(subcode_byte);
         }
 
         f3_frame.set_data(f2_frame.get_data());
         output_buffer.enqueue(f3_frame);
 
-        current_frame++;
-        abs_frame++; // This is the same as current_frame for now.
-
         symbol_number++;
         if (symbol_number >= frames_per_section) {
             symbol_number = 0;
             total_processed_sections++;
+            subcode.next_section();
         }
     }
 }

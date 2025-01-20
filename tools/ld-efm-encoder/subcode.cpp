@@ -27,36 +27,8 @@
 #include "subcode.h"
 
 Subcode::Subcode() {
-    q_mode = 1; // Default to Compact Disc mode
-    track_number = 0;  // Default to track 0
-    symbol_number = 0;  // Default to symbol number 0
-}
-
-uint8_t Subcode::get_symbol(int32_t symbol_number, int32_t frame_number, int32_t abs_frame_number) {
-    if (symbol_number < 2 || symbol_number > 97) {
-        qFatal("Subcode::get_symbol(): Symbol number must be in the range 2 to 97.");
-    }
-
-    if (frame_number < 0) {
-        qFatal("Subcode::get_symbol(): Frame number must be greater than or equal to zero.");
-    }
-
-    if (abs_frame_number < 0) {
-        qFatal("Subcode::get_symbol(): Absolute frame number must be greater than or equal to zero.");
-    }
-
-    uint8_t symbol_byte = 0;
-
-    if (get_p_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x01;
-    if (get_q_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x02;
-    if (get_r_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x04;
-    if (get_s_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x08;
-    if (get_t_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x10;
-    if (get_u_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x20;
-    if (get_v_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x40;
-    if (get_w_channel_bit(symbol_number, frame_number)) symbol_byte |= 0x80;
-
-    return symbol_byte;
+    // Initialise the subcode object
+    begin_new_track(1, 1); // Track #1, Q mode 1 (CD audio)
 }
 
 void Subcode::begin_new_track(int32_t _track_number, uint8_t _q_mode) {
@@ -64,6 +36,7 @@ void Subcode::begin_new_track(int32_t _track_number, uint8_t _q_mode) {
         qFatal("Subcode::begin_new_track(): Track number must be in the range 1 to 99.");
     }
     track_number = _track_number;
+    frame_number = 0;
 
     // Q mode 0: Custom DATA-Q - Unsupported
     // Q mode 1: Compact Disc
@@ -81,142 +54,126 @@ void Subcode::begin_new_track(int32_t _track_number, uint8_t _q_mode) {
     if (q_mode != 1 && q_mode != 4) {
         qFatal("Subcode::begin_new_track(): Q mode must be 1 or 4.");
     }
+
+    // Generate the subcode data
+    qchannel.generate_frame(q_mode, track_number, frame_number, frame_number);
 }
 
-bool Subcode::get_p_channel_bit(uint8_t _symbol_number, int32_t _frame_number) {
-    if (_symbol_number < 2 || _symbol_number > 97) {
-        qFatal("Subcode::get_p_channel_bit(): Symbol number must be in the range 2 to 97.");
-    }
-    
-    Pchannel pchannel(_frame_number);
+void Subcode::next_section() {
+    frame_number++;
 
-    // Stuff goes here...
-
-    // Symbol is 0-98, but 2 symbols are consumed by the sync0 and sync1 symbols
-    // So the bit number is the symbol number minus 2
-    uint8_t bit_number = _symbol_number - 2;
-
-    return pchannel.get_bit(bit_number);
+    // Generate the subcode data
+    qchannel.generate_frame(q_mode, track_number, frame_number, frame_number);
 }
 
-bool Subcode::get_q_channel_bit(uint8_t _symbol_number, int32_t _frame_number) {
-    if (_symbol_number < 2 || _symbol_number > 97) {
-        qFatal("Subcode::get_q_channel_bit(): Symbol number must be in the range 2 to 97.");
+uint8_t Subcode::get_subcode_byte(int32_t symbol_number) {
+    if (symbol_number < 2 || symbol_number > 98) {
+        qFatal("Subcode::get_subcode_byte(): Symbol number must be in the range 2 to 98.");
     }
-    
-    // Generate the QMode1 object for the frame
-    Qmode1 qmode1(_frame_number, track_number);
-    qmode1.set_as_audio();
 
-    // Symbol is 0-98, but 2 symbols are consumed by the sync0 and sync1 symbols
-    // So the bit number is the symbol number minus 2
-    uint8_t bit_number = _symbol_number - 2;
+    uint8_t subcode_byte = 0;
 
-    return qmode1.get_bit(bit_number);
+    // if (pchannel.get_bit(symbol_number)) subcode_byte |= 0x01;
+    if (qchannel.get_bit(symbol_number)) subcode_byte |= 0x02;
+    // if (rchannel.get_bit(symbol_number)) subcode_byte |= 0x04;
+    // if (schannel.get_bit(symbol_number)) subcode_byte |= 0x08;
+    // if (tchannel.get_bit(symbol_number)) subcode_byte |= 0x10;
+    // if (uchannel.get_bit(symbol_number)) subcode_byte |= 0x20;
+    // if (vchannel.get_bit(symbol_number)) subcode_byte |= 0x40;
+    // if (wchannel.get_bit(symbol_number)) subcode_byte |= 0x80;
+
+    return subcode_byte;
 }
 
 // Qchannel class implementation --------------------------------------------------------------------------------------
-Qchannel::Qchannel(int32_t _frame_number) : frame_number(_frame_number) {
-    // Initialize the channel data to all zeros
-    channel_data.resize(12);
-    std::fill(channel_data.begin(), channel_data.end(), 0);
+Qchannel::Qchannel() {
+    // Initialise to some happy defaults
+    generate_frame(1, 1, 1, 1);
 }
 
-bool Qchannel::get_bit(uint8_t bit_number) {
-    if (bit_number < 0 || bit_number > 96) {
-        qFatal("Qchannel::get_bit(): Bit number must be in the range 0 to 96.");
+void Qchannel::generate_frame(uint8_t _qmode, int32_t _track_number, int32_t _frame_number, int32_t _absolute_frame_number) {
+    if (_qmode != 1 && _qmode != 4) {
+        qFatal("Qchannel::generate_frame(): Q mode must be 1 or 4.");
     }
 
-    // We have a QByteArray of 12 bytes, each byte contains 8 bits
+    if (_track_number < 1 || _track_number > 98) {
+        qFatal("Qchannel::generate_frame(): Track number must be in the range 1 to 98.");
+    }
+
+    if (_frame_number < 0) {
+        qFatal("Qchannel::generate_frame(): Frame number must be greater than or equal to zero.");
+    }
+
+    if (_absolute_frame_number < 0) {
+        qFatal("Qchannel::generate_frame(): Absolute frame number must be greater than or equal to zero.");
+    }
+
+    if (_qmode == 1) {
+        qmode1.configure_frame(Qmode1::AUDIO, _track_number, _frame_number, _absolute_frame_number);
+        qmode = 1;
+    } else if (_qmode == 4) {
+        qmode4.configure_frame(Qmode1::AUDIO, _track_number, _frame_number, _absolute_frame_number);
+        qmode = 4;
+    }
+}
+
+bool Qchannel::get_bit(uint8_t symbol_number) {
+    if (symbol_number < 2 || symbol_number > 98) {
+        qFatal("Qchannel::get_bit(): Bit number must be in the range 2 to 98.");
+    }
+
+    uint8_t bit_number = symbol_number - 2; // Convert to 0-based index
+
+    // We have subcode data of 12 bytes, each byte contains 8 bits
     // The bit number is the bit position in the 96-bit subcode data
-    // The byte number is the byte position in the 12-byte subcode data
-    int byte_number = bit_number / 8;
-    int bit_position = bit_number % 8;
+    uint8_t byte_number = bit_number / 8;
 
-    return (channel_data[byte_number] & (1 << bit_position));
-}
-
-// Generate a 16-bit CRC for the subcode data
-// Adapted from http://mdfs.net/Info/Comp/Comms/CRC16.htm
-uint16_t Qchannel::crc16(const uchar *addr, uint16_t num)
-{
-    int32_t i;
-    uint32_t crc = 0;
-
-    for (; num > 0; num--) {
-        crc = crc ^ static_cast<uint32_t>(*addr++ << 8);
-        for (i = 0; i < 8; i++) {
-            crc = crc << 1;
-            if (crc & 0x10000) crc = (crc ^ 0x1021) & 0xFFFF;
-        }
+    uint8_t sc_byte = 0;
+    if (qmode == 1) {
+        sc_byte = qmode1.get_byte(byte_number);
+    } else if (qmode == 4) {
+        sc_byte = qmode4.get_byte(byte_number);
+    } else {
+        qFatal("Qchannel::get_bit(): Q mode must be 1 or 4.");
     }
 
-    return static_cast<uint16_t>(crc);
-}
-
-// Convert integer to BCD (Binary Coded Decimal)
-// Output is always 2 bytes (00-99)
-uint32_t Qchannel::int_to_bcd2(uint32_t value) {
-    if (value > 99) {
-        qFatal("Qchannel::int_to_bcd2(): Value must be in the range 0 to 99.");
-    }
-
-    uint32_t bcd = 0;
-    uint32_t factor = 1;
-
-    while (value > 0) {
-        bcd += (value % 10) * factor;
-        value /= 10;
-        factor *= 16;
-    }
-
-    // Ensure the result is always 2 bytes (00-99)
-    return bcd & 0xFF;
+    // Return true or false based on the required bit
+    return (sc_byte & (1 << (bit_number % 8))) != 0;
 }
 
 // Qmode1 class implementation ----------------------------------------------------------------------------------------
-Qmode1::Qmode1(int32_t _frame_number, int32_t _track_number) : Qchannel(_frame_number) {
-    // Set the current track number
-    // Note: Track 00 is the lead-in track and track 99 is the lead-out track
-    // Track numbers 01-98 are the audio tracks
-    if (_track_number < 0 || _track_number > 99) {
-        qFatal("Qmode1::Qmode1(): Track number must be in the range 0 to 99.");
-    }
-    track_number = _track_number;
+Qmode1::Qmode1() {
+    // Initialize the channel data to all zeros
+    channel_data.resize(12);
+    std::fill(channel_data.begin(), channel_data.end(), 0);
 
-    if (track_number < 1) {
-        // Lead in
-        set_as_lead_in();
-    } else {
-        // Audio
-        set_as_audio();
-    }
+    // Set up some default data
+    configure_frame(AUDIO, 1, 1, 1);
 }
 
-// Set the QMode1 object to audio mode
-void Qmode1::set_as_audio() {
-    if (!is_audio) {
-        is_audio = true;
+void Qmode1::configure_frame(FrameType frame_type, int32_t _track_number, int32_t _frame_number, int32_t _absolute_frame_number) {
+    if (frame_type == AUDIO) {
+        track_number = _track_number;
+        frame_number = _frame_number;
+        absolute_frame_number = _absolute_frame_number;
         generate_audio();
-    }
-}
-
-// Set the QMode1 object to lead-in mode
-void Qmode1::set_as_lead_in() {
-    if (is_audio) {
-        is_audio = false;
+    } else if (frame_type == LEAD_IN) {
         track_number = 0;
+        frame_number = _frame_number;
+        absolute_frame_number = _absolute_frame_number;
         generate_lead_in();
+    } else if (frame_type == LEAD_OUT) {
+        track_number = 99;
+        frame_number = _frame_number;
+        absolute_frame_number = _absolute_frame_number;
+        generate_audio();
+    } else {
+        qFatal("Qmode1::configure_frame(): Invalid frame type.");
     }
 }
 
-// Set the QMode1 object to lead-out mode
-void Qmode1::set_as_lead_out() {
-    if (is_audio) {
-        is_audio = true;
-        track_number = 99;
-        generate_audio();
-    }
+uint8_t Qmode1::get_byte(int32_t byte_number) {
+    return channel_data[byte_number];
 }
 
 // Generate the QMode1 audio data for the current frame
@@ -253,6 +210,15 @@ void Qmode1::generate_audio() {
 
     // Generate the CRC for the channel data
     generate_crc();
+
+    // Output the channel data into qDebug
+    qDebug() << "Audio Frame Data:";
+    qDebug() << "  Control/ADR:" << QString::number(channel_data[0], 16).rightJustified(2, '0');
+    qDebug() << "  Track Number:" << bcd2_to_int(channel_data[1]);
+    qDebug() << "  Min:" << bcd2_to_int(channel_data[3]) << "  Sec:" << bcd2_to_int(channel_data[4]) << "  Frame:" << bcd2_to_int(channel_data[5]);
+    qDebug() << "  Zero:" << QString::number(channel_data[6], 16).rightJustified(2, '0');
+    qDebug() << "  AMin:" << bcd2_to_int(channel_data[7]) << "  ASec:" << bcd2_to_int(channel_data[8]) << "  AFrame:" << bcd2_to_int(channel_data[9]);
+    qDebug() << "  CRC:" << QString::number(static_cast<uint16_t>((channel_data[10] << 8) | channel_data[11]), 16).rightJustified(4, '0');
 }
 
 // Generate the QMode1 lead-in data for the current frame
@@ -284,6 +250,16 @@ void Qmode1::generate_lead_in() {
 
     // Generate the CRC for the channel data
     generate_crc();
+
+    // Output the channel data into qDebug
+    qDebug() << "Lead-in Frame Data:";
+    qDebug() << "  Control/ADR:" << QString::number(channel_data[0], 16).rightJustified(2, '0');
+    qDebug() << "  Track Number:" << bcd2_to_int(channel_data[1]);
+    qDebug() << "  Point:" << bcd2_to_int(channel_data[2]);
+    qDebug() << "  Min:" << bcd2_to_int(channel_data[3]) << "  Sec:" << bcd2_to_int(channel_data[4]) << "  Frame:" << bcd2_to_int(channel_data[5]);
+    qDebug() << "  Zero:" << QString::number(channel_data[6], 16).rightJustified(2, '0');
+    qDebug() << "  PMin:" << bcd2_to_int(channel_data[7]) << "  PSec:" << bcd2_to_int(channel_data[8]) << "  PFrame:" << bcd2_to_int(channel_data[9]);
+    qDebug() << "  CRC:" << QString::number(static_cast<uint16_t>((channel_data[10] << 8) | channel_data[11]), 16).rightJustified(4, '0');
 }
 
 void Qmode1::generate_common() {
@@ -344,30 +320,66 @@ void Qmode1::generate_common() {
 
 void Qmode1::generate_crc() {
     // Generate the CRC for the channel data
-    uint16_t crc = crc16(reinterpret_cast<const uchar *>(channel_data.data()), 10);
+    // CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
+
+    uint16_t crc = crc16(channel_data.mid(0, 10));
 
     // CRC is 2 bytes
     channel_data[10] = crc >> 8;
     channel_data[11] = crc & 0xFF;
+
+    // CRC is inverted
+    channel_data[10] = ~channel_data[10] & 0xFF;
+    channel_data[11] = ~channel_data[11] & 0xFF;
 }
 
-// Pchannel class implementation --------------------------------------------------------------------------------------
-Pchannel::Pchannel(int32_t _frame_number) : frame_number(_frame_number) {
-    // Initialize the channel data to all zeros
-    channel_data.resize(12);
-    std::fill(channel_data.begin(), channel_data.end(), 0);
-}
+// Generate a 16-bit CRC for the subcode data
+// Adapted from http://mdfs.net/Info/Comp/Comms/CRC16.htm
+uint16_t Qmode1::crc16(const QByteArray &data)
+{
+    int32_t i;
+    uint32_t crc = 0;
 
-bool Pchannel::get_bit(uint8_t bit_number) {
-    if (bit_number < 0 || bit_number > 96) {
-        qFatal("Qchannel::get_bit(): Bit number must be in the range 0 to 96.");
+    for (int pos = 0; pos < data.size(); pos++) {
+        crc = crc ^ static_cast<uint32_t>(static_cast<uchar>(data[pos]) << 8);
+        for (i = 0; i < 8; i++) {
+            crc = crc << 1;
+            if (crc & 0x10000) crc = (crc ^ 0x1021) & 0xFFFF;
+        }
     }
 
-    // We have a QByteArray of 12 bytes, each byte contains 8 bits
-    // The bit number is the bit position in the 96-bit subcode data
-    // The byte number is the byte position in the 12-byte subcode data
-    int byte_number = bit_number / 8;
-    int bit_position = bit_number % 8;
+    return static_cast<uint16_t>(crc);
+}
 
-    return (channel_data[byte_number] & (1 << bit_position));
+// Convert integer to BCD (Binary Coded Decimal)
+// Output is always 2 bytes (00-99)
+uint32_t Qmode1::int_to_bcd2(uint32_t value) {
+    if (value > 99) {
+        qFatal("Qchannel::int_to_bcd2(): Value must be in the range 0 to 99.");
+    }
+
+    uint32_t bcd = 0;
+    uint32_t factor = 1;
+
+    while (value > 0) {
+        bcd += (value % 10) * factor;
+        value /= 10;
+        factor *= 16;
+    }
+
+    // Ensure the result is always 2 bytes (00-99)
+    return bcd & 0xFF;
+}
+
+uint32_t Qmode1::bcd2_to_int(uint32_t bcd) {
+    uint32_t value = 0;
+    uint32_t factor = 1;
+
+    while (bcd > 0) {
+        value += (bcd & 0x0F) * factor;
+        bcd >>= 4;
+        factor *= 10;
+    }
+
+    return value;
 }

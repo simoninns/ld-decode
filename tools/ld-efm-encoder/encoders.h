@@ -88,9 +88,6 @@ private:
     QQueue<F3Frame> output_buffer;
 
     int32_t symbol_number;
-    int32_t current_frame;
-    int32_t abs_frame;
-    int32_t current_track;
     int32_t frames_per_section;
     int32_t total_processed_sections;
 

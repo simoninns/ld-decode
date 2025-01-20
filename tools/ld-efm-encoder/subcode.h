@@ -25,57 +25,24 @@
 #ifndef SUBCODE_H
 #define SUBCODE_H
 
-class Subcode {
+class Qmode1 {
 public:
-    Subcode();
+    Qmode1();
 
-    uint8_t get_symbol(int32_t symbol_number, int32_t frame_number, int32_t abs_frame_number);
-    void begin_new_track(int32_t track_number, uint8_t _q_mode);
-    
-private:
-    bool get_p_channel_bit(uint8_t symbol_number, int32_t index);
-    bool get_q_channel_bit(uint8_t symbol_number, int32_t index);
+    enum FrameType {
+        AUDIO,
+        LEAD_IN,
+        LEAD_OUT
+    };
 
-    // The following channels are not implemented:
-    bool get_r_channel_bit(int32_t symbol_number, int32_t index) { return false; };
-    bool get_s_channel_bit(int32_t symbol_number, int32_t index) { return false; };
-    bool get_t_channel_bit(int32_t symbol_number, int32_t index) { return false; };
-    bool get_u_channel_bit(int32_t symbol_number, int32_t index) { return false; };    
-    bool get_v_channel_bit(int32_t symbol_number, int32_t index) { return false; };
-    bool get_w_channel_bit(int32_t symbol_number, int32_t index) { return false; };
-
-    uint16_t crc16(const uchar *addr, uint16_t num);
-    uint32_t int_to_bcd(uint32_t value);
-
-    uint8_t q_mode;
-    uint8_t track_number;
-    int32_t symbol_number;
-};
-
-// Q Channel classes
-class Qchannel {
-public:
-    Qchannel(int32_t _frame_number);
-    bool get_bit(uint8_t bit_number);
-
-protected:
-    QByteArray channel_data;
-    int32_t frame_number;
-
-    uint16_t crc16(const uchar *addr, uint16_t num);
-    uint32_t int_to_bcd2(uint32_t value);
-};
-
-class Qmode1 : public Qchannel {
-public:
-    Qmode1(int32_t _frame_number, int32_t _track_number);
-    void set_as_audio();
-    void set_as_lead_in();
-    void set_as_lead_out();
+    void configure_frame(FrameType frame_type, int32_t _track_number, int32_t _frame_number, int32_t _absolute_frame_number);
+    uint8_t get_byte(int32_t byte_number);
 
 private:
-    bool is_audio;
     int32_t track_number;
+    int32_t frame_number;
+    int32_t absolute_frame_number;
+    QByteArray channel_data;
 
     // Parameters common to all QMode 1 frames
     typedef struct qmode1_common_t { 
@@ -112,23 +79,45 @@ private:
     void generate_lead_in();
     void generate_common();
     void generate_crc();
+    uint16_t crc16(const QByteArray &addr);
+    uint32_t int_to_bcd2(uint32_t value);
+    uint32_t bcd2_to_int(uint32_t bcd);
 };
 
-// QMode 4 is the same as QMode 1
-class Qmode4 : public Qchannel {  
+// Q Channel classes
+class Qchannel {
 public:
-    Qmode4(int32_t _frame_number) : Qchannel(_frame_number) {}
+    Qchannel();
+    void generate_frame(uint8_t _qmode, int32_t _track_number, int32_t _frame_number, int32_t _absolute_frame_number);
+    bool get_bit(uint8_t bit_number);
+
+private:
+    Qmode1 qmode1;
+    Qmode1 qmode4;
+    int32_t qmode;
 };
 
-// P Channel classes
-class Pchannel {
+class Subcode {
 public:
-    Pchannel(int32_t _frame_number);
-    bool get_bit(uint8_t symbol_number);
+    Subcode();
 
-protected:
-    QByteArray channel_data;
+    void begin_new_track(int32_t track_number, uint8_t _q_mode);
+    void next_section();
+    uint8_t get_subcode_byte(int32_t symbol_number);
+    
+private:
+    uint8_t q_mode;
+    uint8_t track_number;
     int32_t frame_number;
+
+    //Pchannel pchannel;
+    Qchannel qchannel;
+    // Rchannel rchannel;
+    // Schannel schannel;
+    // Tchannel tchannel;
+    // Uchannel uchannel;
+    // Vchannel vchannel;
+    // Wchannel wchannel;
 };
 
 #endif // SUBCODE_H
