@@ -31,6 +31,7 @@
 #include "delay_lines.h"
 #include "frame.h"
 #include "encoders.h"
+#include "subcode.h"
 
 // Data24ToF1Frame class implementation
 Data24ToF1Frame::Data24ToF1Frame() {}
@@ -243,10 +244,17 @@ QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
 
 // F2FrameToF3Frame class implementation
 F2FrameToF3Frame::F2FrameToF3Frame() {
-    section_index = 0;
+    symbol_number = 0;
+    current_frame = 0;
+    abs_frame = 0;
+    current_track = 1; // This is a constant for now
     total_processed_sections = 0;
 
     frames_per_section = 98;
+
+    // Initialize the subcode object with the current track number
+    // and Q-mode 1 (CD audio)
+    subcode.begin_new_track(current_track, 1);
 }
 
 // Input is 32 bytes of data from the F23 frame payload
@@ -270,21 +278,25 @@ void F2FrameToF3Frame::process_queue() {
         F2Frame f2_frame = input_buffer.dequeue();
         F3Frame f3_frame;
 
-        if (section_index == 0) {
+        if (symbol_number == 0) {
             f3_frame.set_frame_type_as_sync0();
-        } else if (section_index == 1) {
+        } else if (symbol_number == 1) {
             f3_frame.set_frame_type_as_sync1();
         } else {
-            // Note: The subcode value is not computed here - this is just for testing
-            f3_frame.set_frame_type_as_subcode(0);
+            // Generate the subcode byte
+            uint8_t subcode_bytes = subcode.get_symbol(symbol_number, current_frame, abs_frame);
+            f3_frame.set_frame_type_as_subcode(subcode_bytes);
         }
 
         f3_frame.set_data(f2_frame.get_data());
         output_buffer.enqueue(f3_frame);
 
-        section_index++;
-        if (section_index >= frames_per_section) {
-            section_index = 0;
+        current_frame++;
+        abs_frame++; // This is the same as current_frame for now.
+
+        symbol_number++;
+        if (symbol_number >= frames_per_section) {
+            symbol_number = 0;
             total_processed_sections++;
         }
     }

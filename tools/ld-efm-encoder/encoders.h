@@ -32,6 +32,7 @@
 #include "delay_lines.h"
 #include "frame.h"
 #include "reedsolomon.h"
+#include "subcode.h"
 
 class Data24ToF1Frame {
 public:
@@ -86,9 +87,14 @@ private:
     QQueue<F2Frame> input_buffer;
     QQueue<F3Frame> output_buffer;
 
-    int section_index;
-    int frames_per_section;
-    int total_processed_sections;
+    int32_t symbol_number;
+    int32_t current_frame;
+    int32_t abs_frame;
+    int32_t current_track;
+    int32_t frames_per_section;
+    int32_t total_processed_sections;
+
+    Subcode subcode;
 };
 
 class F3FrameToChannel {

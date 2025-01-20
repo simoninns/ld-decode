@@ -6,6 +6,7 @@ add_executable(ld-efm-encoder
     delay_lines.cpp
     encoders.cpp
     reedsolomon.cpp
+    subcode.cpp
 )
 
 # Find the Qt library
