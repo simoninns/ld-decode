@@ -280,8 +280,7 @@ void F2FrameToF3Frame::process_queue() {
             f3_frame.set_frame_type_as_sync1();
         } else {
             // Generate the subcode byte
-            uint8_t subcode_byte = subcode.get_subcode_byte(symbol_number);
-            f3_frame.set_frame_type_as_subcode(subcode_byte);
+            f3_frame.set_frame_type_as_subcode(subcode.get_subcode_byte(symbol_number));
         }
 
         f3_frame.set_data(f2_frame.get_data());
@@ -291,6 +290,7 @@ void F2FrameToF3Frame::process_queue() {
         if (symbol_number >= frames_per_section) {
             symbol_number = 0;
             total_processed_sections++;
+
             subcode.next_section();
         }
     }

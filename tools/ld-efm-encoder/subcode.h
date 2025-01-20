@@ -25,9 +25,9 @@
 #ifndef SUBCODE_H
 #define SUBCODE_H
 
-class Qmode1 {
+class Qmode1and4 {
 public:
-    Qmode1();
+    Qmode1and4(int32_t _qmode);
 
     enum FrameType {
         AUDIO,
@@ -43,6 +43,7 @@ private:
     int32_t frame_number;
     int32_t absolute_frame_number;
     QByteArray channel_data;
+    int32_t qmode;
 
     // Parameters common to all QMode 1 frames
     typedef struct qmode1_common_t { 
@@ -92,10 +93,10 @@ public:
     bool get_bit(uint8_t bit_number);
 
 private:
-    Qmode1 qmode1;
-    Qmode1 qmode4;
+    Qmode1and4 qmode1;
+    Qmode1and4 qmode4;
     int32_t qmode;
-};
+};;
 
 class Subcode {
 public:
