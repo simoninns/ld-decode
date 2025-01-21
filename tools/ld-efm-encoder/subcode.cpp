@@ -57,6 +57,7 @@ void Subcode::begin_new_track(int32_t _track_number, uint8_t _q_mode) {
 
     // Generate the subcode data
     qchannel.generate_frame(q_mode, track_number, frame_number, frame_number);
+    pchannel.generate_frame(false);
 }
 
 void Subcode::next_section() {
@@ -78,14 +79,45 @@ uint8_t Subcode::get_subcode_byte(int32_t symbol_number) {
     uint8_t subcode_byte = 0;
     // if (pchannel.get_bit(symbol_number)) subcode_byte |= 0x80;
     if (qchannel.get_bit(symbol_number)) subcode_byte |= 0x40;
-    // if (rchannel.get_bit(symbol_number)) subcode_byte |= 0x20;
-    // if (schannel.get_bit(symbol_number)) subcode_byte |= 0x10;
-    // if (tchannel.get_bit(symbol_number)) subcode_byte |= 0x08;
-    // if (uchannel.get_bit(symbol_number)) subcode_byte |= 0x04;
-    // if (vchannel.get_bit(symbol_number)) subcode_byte |= 0x02;
-    // if (wchannel.get_bit(symbol_number)) subcode_byte |= 0x01;
+
+    // ECMA-130 page 20 - Clause 22.1 states that channels r to w are reserved
+    // and should be set to zero
 
     return subcode_byte;
+}
+
+// Pchannel class implementation --------------------------------------------------------------------------------------
+Pchannel::Pchannel() {
+    // Initialise to some happy defaults
+    generate_frame(false);
+}
+
+void Pchannel::generate_frame(bool _flag) {
+    // The P channel is a single bit that is set to 1 if the Q channel is in Q mode 1
+    // and 0 if the Q channel is in Q mode 4
+    if (_flag) {
+        // If the flag is true, set the P channel data to 1s
+        channel_data.fill(0xFF, 12);
+    } else {
+        // If the flag is true, set the P channel data to 0s
+        channel_data.fill(0xFF, 12);
+    }
+}
+
+bool Pchannel::get_bit(uint8_t symbol_number) {
+    if (symbol_number < 0 || symbol_number > 96) {
+        qFatal("Pchannel::get_bit(): Bit number must be in the range 0 to 96.");
+    }
+
+    // The symbol number is the bit position in the 96-bit subcode data
+    // We need to convert this to a byte number and bit number within that byte
+    uint8_t byte_number = symbol_number / 8;
+    uint8_t bit_number = 7 - (symbol_number % 8); // Change to make MSB at the other end
+
+    uint8_t sc_byte = channel_data[byte_number];
+
+    // Return true or false based on the required bit
+    return (sc_byte & (1 << bit_number)) != 0;
 }
 
 // Qchannel class implementation --------------------------------------------------------------------------------------

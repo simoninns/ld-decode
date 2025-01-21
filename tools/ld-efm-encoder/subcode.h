@@ -85,7 +85,18 @@ private:
     uint32_t bcd2_to_int(uint32_t bcd);
 };
 
-// Q Channel classes
+// P Channel class
+class Pchannel {
+public:
+    Pchannel();
+    void generate_frame(bool _flag);
+    bool get_bit(uint8_t bit_number);
+
+private:
+    QByteArray channel_data;
+};
+
+// Q Channel class
 class Qchannel {
 public:
     Qchannel();
@@ -96,7 +107,7 @@ private:
     Qmode1and4 qmode1;
     Qmode1and4 qmode4;
     int32_t qmode;
-};;
+};
 
 class Subcode {
 public:
@@ -111,14 +122,8 @@ private:
     uint8_t track_number;
     int32_t frame_number;
 
-    //Pchannel pchannel;
+    Pchannel pchannel;
     Qchannel qchannel;
-    // Rchannel rchannel;
-    // Schannel schannel;
-    // Tchannel tchannel;
-    // Uchannel uchannel;
-    // Vchannel vchannel;
-    // Wchannel wchannel;
 };
 
 #endif // SUBCODE_H
