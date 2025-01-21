@@ -34,8 +34,7 @@ EfmProcessor::EfmProcessor()
 {
 }
 
-bool EfmProcessor::process(QString input_filename, QString output_filename)
-{
+bool EfmProcessor::process(QString input_filename, QString output_filename, bool showInput, bool showF1, bool showF2, bool showF3) {
     qDebug() << "EfmProcessor::process(): Encoding EFM data from file: " << input_filename << " to file: " << output_filename;
 
     AudioToData audio_data(input_filename);
@@ -71,11 +70,13 @@ bool EfmProcessor::process(QString input_filename, QString output_filename)
     while (!(audio_data_frame = audio_data.read_24_bytes()).isEmpty()) {
         audio_data_count += 24;
 
-        QString dataString;
-        for (int i = 0; i < audio_data_frame.size(); ++i) {
-            dataString.append(QString("%1 ").arg(audio_data_frame[i], 2, 16, QChar('0')));
+        if (showInput) {
+            QString dataString;
+            for (int i = 0; i < audio_data_frame.size(); ++i) {
+                dataString.append(QString("%1 ").arg(audio_data_frame[i], 2, 16, QChar('0')));
+            }
+            qDebug().noquote() << "Input data:" << dataString.trimmed();
         }
-        qDebug().noquote() << "Input data:" << dataString.trimmed();
 
         // Push the data to the first converter
         data24_to_f1.push_frame(audio_data_frame);
@@ -84,7 +85,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename)
         if (data24_to_f1.is_ready()) {
             // Pop the F1 frame, count it and push it to the next converter
             F1Frame f1_frame = data24_to_f1.pop_frame();
-            //f1_frame.show_data();
+            if (showF1) f1_frame.show_data();
             f1_frame_count++;
             f1_frame_to_f2.push_frame(f1_frame);
         }
@@ -93,7 +94,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename)
         if (f1_frame_to_f2.is_ready()) {
             // Pop the F2 frame, count it and push it to the next converter
             F2Frame f2_frame = f1_frame_to_f2.pop_frame();
-            //f2_frame.show_data();
+            if (showF2) f2_frame.show_data();
             f2_frame_count++;
             f2_frame_to_f3.push_frame(f2_frame);
         }
@@ -102,7 +103,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename)
         if (f2_frame_to_f3.is_ready()) {
             // Pop the F3 frame, count it and push it to the next converter
             F3Frame f3_frame = f2_frame_to_f3.pop_frame();
-            //f3_frame.show_data();
+            if (showF3) f3_frame.show_data();
             f3_frame_count++;
             f3_to_channel.push_frame(f3_frame);
         }

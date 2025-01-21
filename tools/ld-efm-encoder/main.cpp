@@ -59,7 +59,16 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // -- Positional arguments --
+    // Add new options for showing frame data
+    QCommandLineOption showF1Option("show-f1", QCoreApplication::translate("main", "Show F1 frame data"));
+    QCommandLineOption showF2Option("show-f2", QCoreApplication::translate("main", "Show F2 frame data"));
+    QCommandLineOption showF3Option("show-f3", QCoreApplication::translate("main", "Show F3 frame data"));
+    QCommandLineOption showInputOption("show-input", QCoreApplication::translate("main", "Show input data"));
+    parser.addOption(showF1Option);
+    parser.addOption(showF2Option);
+    parser.addOption(showF3Option);
+    parser.addOption(showInputOption);
+
     // Positional argument to specify input data file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input audio data file"));
 
@@ -88,7 +97,13 @@ int main(int argc, char *argv[])
     // Perform the processing
     EfmProcessor efm_processor;
 
-    if (!efm_processor.process(input_filename, output_filename)) {
+    // Check for custom options
+    bool showF1 = parser.isSet(showF1Option);
+    bool showF2 = parser.isSet(showF2Option);
+    bool showF3 = parser.isSet(showF3Option);
+    bool showInput = parser.isSet(showInputOption);
+
+    if (!efm_processor.process(input_filename, output_filename, showInput, showF1, showF2, showF3)) {
         return 1;
     }
 
