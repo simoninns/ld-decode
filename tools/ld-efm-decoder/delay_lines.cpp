@@ -25,6 +25,7 @@
 #include <QVector>
 #include <QQueue>
 #include <QtGlobal>
+#include <QDebug>
 
 #include "delay_lines.h"
 
@@ -136,7 +137,7 @@ QVector<uint8_t> DelayLine1::process(QVector<uint8_t> input_data) {
 // DelayLineM class implementation - This is the "Delay lines" shown
 // on page 36 of ECMA-130 issue 2 (28 delays ranging from 0 to 108 bytes of delay)
 DelayLineM::DelayLineM() {
-    QVector<int> delay_lengths = {108, 104, 100, 96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4, 0};
+    QVector<int> delay_lengths = {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108};
     for (int delay : delay_lengths) {
         QQueue<uint8_t> buffer;
         for (int j = 0; j < delay; ++j) {
@@ -153,12 +154,10 @@ QVector<uint8_t> DelayLineM::process(QVector<uint8_t> input_data) {
 
     QVector<uint8_t> output_data(28, 0);
 
-    for (int i = 0; i < 27; ++i) {
+    for (int i = 0; i < 28; ++i) {
         delay_buffers[i].enqueue(input_data[i]);
         output_data[i] = delay_buffers[i].dequeue();
     }
-
-    output_data[27] = input_data[27];
 
     return output_data;
 }

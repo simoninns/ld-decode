@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmdecoder.h
+    efm_processor.h
 
     ld-efm-decoder - EFM data encoder
     Copyright (C) 2025 Simon Inns
@@ -22,17 +22,17 @@
 
 ************************************************************************/
 
-#ifndef EFMDECODER_H
-#define EFMDECODER_H
+#ifndef EFM_PROCESSOR_H
+#define EFM_PROCESSOR_H
 
 #include <QString>
 
-class EfmDecoder
+class EfmProcessor
 {
 public:
-    EfmDecoder();
+    EfmProcessor();
 
-    bool decode(QString input_fileName, QString output_fileName);
+    bool process(QString input_filename, QString output_filename, bool showF1, bool showF2, bool showF3);
 };
 
-#endif // EFMDECODER_H
+#endif // EFM_PROCESSOR_H

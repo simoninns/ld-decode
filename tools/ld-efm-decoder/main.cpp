@@ -29,7 +29,7 @@
 #include <QThread>
 
 #include "logging.h"
-#include "efmdecoder.h"
+#include "efm_processor.h"
 
 int main(int argc, char *argv[])
 {
@@ -59,11 +59,16 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // -- Positional arguments --
-    // Positional argument to specify input WAV file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM file"));
+    // Add custom options for showing frame data
+    QCommandLineOption showF1Option("show-f1", QCoreApplication::translate("main", "Show frame data at level F1"));
+    QCommandLineOption showF2Option("show-f2", QCoreApplication::translate("main", "Show frame data at level F2"));
+    QCommandLineOption showF3Option("show-f3", QCoreApplication::translate("main", "Show frame data at level F3"));
+    parser.addOption(showF1Option);
+    parser.addOption(showF2Option);
+    parser.addOption(showF3Option);
 
-    // Positional argument to specify output audio file
+    // -- Positional arguments --
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM file"));
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output data file"));
 
     // Process the command line options and arguments given by the user
@@ -71,6 +76,11 @@ int main(int argc, char *argv[])
 
     // Standard logging options
     processStandardDebugOptions(parser);
+
+    // Check for custom options
+    bool showF1 = parser.isSet(showF1Option);
+    bool showF2 = parser.isSet(showF2Option);
+    bool showF3 = parser.isSet(showF3Option);
 
     // Get the filename arguments from the parser
     QString input_filename;
@@ -86,9 +96,9 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     qInfo() << "Beginning EFM decoding of" << input_filename;
-    EfmDecoder efm_decoder;
+    EfmProcessor efm_processor;
 
-    if (!efm_decoder.decode(input_filename, output_filename)) {
+    if (!efm_processor.process(input_filename, output_filename, showF1, showF2, showF3)) {
         return 1;
     }
 

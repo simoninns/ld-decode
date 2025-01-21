@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmdecoder.cpp
+    efm_processor.cpp
 
     ld-efm-decoder - EFM data decoder
     Copyright (C) 2025 Simon Inns
@@ -26,22 +26,20 @@
 #include <QString>
 #include <QFile>
 
-#include "efmdecoder.h"
+#include "efm_processor.h"
 #include "decoders.h"
 
-EfmDecoder::EfmDecoder()
-{
+EfmProcessor::EfmProcessor() {
 }
 
-bool EfmDecoder::decode(QString input_filename, QString output_filename)
-{
-    qDebug() << "EfmDecoder::Decode(): Decoding EFM from file: " << input_filename << " to file: " << output_filename;
+bool EfmProcessor::process(QString input_filename, QString output_filename, bool showF1, bool showF2, bool showF3) {
+    qDebug() << "EfmProcessor::Decode(): Decoding EFM from file: " << input_filename << " to file: " << output_filename;
 
     // Prepare the input file
     QFile input_file(input_filename);
 
     if (!input_file.open(QIODevice::ReadOnly)) {
-        qDebug() << "EfmDecoder::decode(): Failed to open input file: " << input_filename;
+        qDebug() << "EfmProcessor::decode(): Failed to open input file: " << input_filename;
         return false;
     }
 
@@ -87,7 +85,7 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
         // Are there any F3 frames ready?
         if (channel_to_f3.is_ready()) {
             F3Frame f3_frame = channel_to_f3.pop_frame();
-            //f3_frame.show_data();
+            if (showF3) f3_frame.show_data();
             f3_frame_to_f2.push_frame(f3_frame);
             f3_frame_count++;
         }
@@ -95,7 +93,7 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
         // Are there any F2 frames ready?
         if (f3_frame_to_f2.is_ready()) {
             F2Frame f2_frame = f3_frame_to_f2.pop_frame();
-            //f2_frame.show_data();
+            if (showF2) f2_frame.show_data();
             f2_frame_to_f1.push_frame(f2_frame);
             f2_frame_count++;
         }
@@ -103,7 +101,7 @@ bool EfmDecoder::decode(QString input_filename, QString output_filename)
         // Are there any F1 frames ready?
         if (f2_frame_to_f1.is_ready()) {
             F1Frame f1_frame = f2_frame_to_f1.pop_frame();
-            f1_frame.show_data();
+            if (showF1) f1_frame.show_data();
             f1_frame_to_data24.push_frame(f1_frame);
             f1_frame_count++;
         }

@@ -350,8 +350,8 @@ void F2FrameToF1Frame::process_queue() {
         data = decoderC1(data);
         data = delay_lineM.process(data);
         data = decoderC2(data);
-        data = deinterleave(data);
-        data = delay_line2.process(data);
+        //data = deinterleave(data);
+        //data = delay_line2.process(data);
 
         // Put the resulting data into an F1 frame and push it to the output buffer
         F1Frame f1_frame;
@@ -365,11 +365,11 @@ void F2FrameToF1Frame::process_queue() {
 QVector<uint8_t> F2FrameToF1Frame::deinterleave(QVector<uint8_t> interleaved_data) {
     QVector<uint8_t> data(24, 0);
 
-    data[ 0] = interleaved_data[0];
-    data[ 1] = interleaved_data[1];
+    data[0]  = interleaved_data[0]; 
+    data[1]  = interleaved_data[1];
 
-    data[ 6] = interleaved_data[2];
-    data[ 7] = interleaved_data[3];
+    data[6]  = interleaved_data[2];
+    data[7]  = interleaved_data[3];
 
     data[12] = interleaved_data[4];
     data[13] = interleaved_data[5];
@@ -383,7 +383,7 @@ QVector<uint8_t> F2FrameToF1Frame::deinterleave(QVector<uint8_t> interleaved_dat
     data[8] = interleaved_data[10];
     data[9] = interleaved_data[11];
 
-    data[14] = interleaved_data[12];
+    data[14] = interleaved_data[12]; 
     data[15] = interleaved_data[13];
 
     data[20] = interleaved_data[14];
@@ -427,10 +427,7 @@ QVector<uint8_t> F2FrameToF1Frame::decoderC2(QVector<uint8_t> data) {
     // Decode the data
     data = circ.c2_decode(data);
 
-    // Strip the parity bytes
-    data = data.mid(0, 28-4);
-
-    if (data.size() != 28-4) {
+    if (data.size() != 24) {
         qFatal("F2FrameToF1Frame::encoderC2(): Attempted to return an incorrect number of bytes!");
     }
 

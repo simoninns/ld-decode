@@ -2,7 +2,7 @@
 
     reedsolomon.h
 
-    ld-efm-decoder - EFM data decoder
+    ld-efm-decoder - EFM data encoder
     Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
