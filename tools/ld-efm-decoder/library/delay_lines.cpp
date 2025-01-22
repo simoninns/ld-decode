@@ -89,13 +89,13 @@ QVector<uint8_t> DelayLines::push(QVector<uint8_t> input_data) {
     return output_data;
 }
 
-// The delay line isn't ready until the number of pushes equals or exceeds the largest delay length plus one
+// The delay line isn't ready until the number of pushes equals or exceeds the largest delay length
 // This is because when the number of pushes is less, the output data is not generated just from the input data
 // but also from the default values in the delay buffer
 //
-// Return true if the number of pushes equals or exceeds the largest delay length plus one
+// Return true if the number of pushes equals or exceeds the largest delay length
 bool DelayLines::is_ready() {
-    return push_count >= max_delay + 1;
+    return push_count >= max_delay;
 }
 
 int32_t DelayLines::get_number_of_delays() {
