@@ -112,9 +112,9 @@ private:
     QVector<uint8_t> decoderC2(QVector<uint8_t> data);
     QVector<uint8_t> decoderC1(QVector<uint8_t> data);
 
-    DelayLine2 delay_line2;
-    DelayLine1 delay_line1;
-    DelayLineM delay_lineM;
+    DelayLines delay_line1;
+    DelayLines delay_line2;
+    DelayLines delay_lineM;
 
     ReedSolomon circ;
 

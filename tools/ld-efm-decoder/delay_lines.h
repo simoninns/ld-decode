@@ -30,53 +30,19 @@
 #include <QMap>
 #include <cstdint>
 
-class DelayLine {
-public:
-    DelayLine(int size);
-    void add(QVector<uint8_t> input);
-    QVector<uint8_t> get(int delay);
-
-private:
-    int size;
-    int index;
-    QVector<uint8_t> buffer;
-};
-
 class DelayLines {
 public:
-    DelayLines(int num_lines, int size);
-    void add(QVector<uint8_t> input);
-    QVector<QVector<uint8_t>> get(int delay);
+    DelayLines(QVector<int> _delay_lengths);
+    QVector<uint8_t> push(QVector<uint8_t> input_data);
+    bool is_ready();
+    int32_t get_number_of_delays();
+    void flush();
 
 private:
-    QVector<DelayLine> lines;
-};
-
-class DelayLine2 {
-public:
-    DelayLine2();
-    QVector<uint8_t> process(QVector<uint8_t> input_data);
-
-private:
-    QMap<int, QQueue<uint8_t>> delay_buffers;
-};
-
-class DelayLine1 {
-public:
-    DelayLine1();
-    QVector<uint8_t> process(QVector<uint8_t> input_data);
-
-private:
-    QMap<int, QQueue<uint8_t>> delay_buffers;
-};
-
-class DelayLineM {
-public:
-    DelayLineM();
-    QVector<uint8_t> process(QVector<uint8_t> input_data);
-
-private:
+    QVector<int> delay_lengths;
     QVector<QQueue<uint8_t>> delay_buffers;
+    int32_t max_delay;
+    int32_t push_count;
 };
 
 #endif // DELAY_LINES_H

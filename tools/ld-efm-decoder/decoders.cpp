@@ -315,9 +315,12 @@ void F3FrameToF2Frame::process_queue() {
     }
 }
 
-F2FrameToF1Frame::F2FrameToF1Frame() {
-    invalid_f2_frames_count = 0;
-    valid_f2_frames_count = 0;
+F2FrameToF1Frame::F2FrameToF1Frame()
+    : delay_line1({1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0}),
+      delay_line2({2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0}),
+      delay_lineM({0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108}),
+      invalid_f2_frames_count(0),
+      valid_f2_frames_count(0) {
 }
 
 void F2FrameToF1Frame::push_frame(F2Frame data) {
@@ -345,13 +348,13 @@ void F2FrameToF1Frame::process_queue() {
         QVector<uint8_t> data = f2_frame.get_data();
 
         // Process the data
-        data = delay_line1.process(data);
+        data = delay_line1.push(data);
         data = inverter(data);
         data = decoderC1(data);
-        data = delay_lineM.process(data);
+        data = delay_lineM.push(data);
         data = decoderC2(data);
-        //data = deinterleave(data);
-        //data = delay_line2.process(data);
+        data = deinterleave(data);
+        data = delay_line2.push(data);
 
         // Put the resulting data into an F1 frame and push it to the output buffer
         F1Frame f1_frame;
