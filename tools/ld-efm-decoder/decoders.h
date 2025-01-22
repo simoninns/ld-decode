@@ -33,6 +33,8 @@
 #include "frame.h"
 #include "delay_lines.h"
 #include "reedsolomon.h"
+#include "interleave.h"
+#include "inverter.h"
 
 class TvaluesToChannel {
 public:
@@ -107,19 +109,18 @@ public:
 
 private:
     void process_queue();
-    QVector<uint8_t> deinterleave(QVector<uint8_t> interleaved_data);
-    QVector<uint8_t> inverter(QVector<uint8_t> data);
-    QVector<uint8_t> decoderC2(QVector<uint8_t> data);
-    QVector<uint8_t> decoderC1(QVector<uint8_t> data);
+
+    QQueue<F2Frame> input_buffer;
+    QQueue<F1Frame> output_buffer;
+
+    ReedSolomon circ;
 
     DelayLines delay_line1;
     DelayLines delay_line2;
     DelayLines delay_lineM;
 
-    ReedSolomon circ;
-
-    QQueue<F2Frame> input_buffer;
-    QQueue<F1Frame> output_buffer;
+    Interleave interleave;
+    Inverter inverter;
 
     uint32_t invalid_f2_frames_count;
     uint32_t valid_f2_frames_count;

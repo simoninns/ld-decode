@@ -33,8 +33,6 @@
 #include <QDebug>
 
 #include "decoders.h"
-#include "frame.h"
-#include "delay_lines.h"
 
 TvaluesToChannel::TvaluesToChannel() {
     invalid_t_values_count = 0;
@@ -349,11 +347,11 @@ void F2FrameToF1Frame::process_queue() {
 
         // Process the data
         data = delay_line1.push(data);
-        data = inverter(data);
-        data = decoderC1(data);
+        data = inverter.invert_parity(data);
+        data = circ.c1_decode(data);
         data = delay_lineM.push(data);
-        data = decoderC2(data);
-        data = deinterleave(data);
+        data = circ.c2_decode(data);
+        data = interleave.interleave(data);
         data = delay_line2.push(data);
 
         // Put the resulting data into an F1 frame and push it to the output buffer
@@ -361,101 +359,6 @@ void F2FrameToF1Frame::process_queue() {
         f1_frame.set_data(data);
         output_buffer.enqueue(f1_frame);
     }
-}
-
-// Perform the de-interleaving operation on the input data in accordance with
-// ECMA-130 issue 2 page 36 ("De-interleaving")
-QVector<uint8_t> F2FrameToF1Frame::deinterleave(QVector<uint8_t> interleaved_data) {
-    QVector<uint8_t> data(24, 0);
-
-    data[0]  = interleaved_data[0]; 
-    data[1]  = interleaved_data[1];
-
-    data[6]  = interleaved_data[2];
-    data[7]  = interleaved_data[3];
-
-    data[12] = interleaved_data[4];
-    data[13] = interleaved_data[5];
-
-    data[18] = interleaved_data[6];
-    data[19] = interleaved_data[7];
-
-    data[2] = interleaved_data[8];
-    data[3] = interleaved_data[9];
-
-    data[8] = interleaved_data[10];
-    data[9] = interleaved_data[11];
-
-    data[14] = interleaved_data[12]; 
-    data[15] = interleaved_data[13];
-
-    data[20] = interleaved_data[14];
-    data[21] = interleaved_data[15];
-
-    data[4] = interleaved_data[16];
-    data[5] = interleaved_data[17];
-
-    data[10] = interleaved_data[18];
-    data[11] = interleaved_data[19];
-
-    data[16] = interleaved_data[20];
-    data[17] = interleaved_data[21];
-
-    data[22] = interleaved_data[22];
-    data[23] = interleaved_data[23];
-
-    return data;
-}
-
-// Invert the P and Q parity bytes in accordance with
-// ECMA-130 issue 2 page 36
-QVector<uint8_t> F2FrameToF1Frame::inverter(QVector<uint8_t> data) {
-    for (int i = 12; i < 16; ++i) {
-        data[i] = ~data[i] & 0xFF;
-    }
-    for (int i = 28; i < 32; ++i) {
-        data[i] = ~data[i] & 0xFF;
-    }
-    return data;
-}
-
-QVector<uint8_t> F2FrameToF1Frame::decoderC2(QVector<uint8_t> data) {
-    // The error correction encoder C2 decodes a (28,24) Reed-Solomon code.
-    // There are 24 bytes of input and four parity bytes Q in bytes 12-15
-
-    if (data.size() != 28) {
-        qFatal("F2FrameToF1Frame::encoderC2(): Data must be a QVector of 28 integers in the range 0-255.");
-    }
-
-    // Decode the data
-    data = circ.c2_decode(data);
-
-    if (data.size() != 24) {
-        qFatal("F2FrameToF1Frame::encoderC2(): Attempted to return an incorrect number of bytes!");
-    }
-
-    return data;
-}
-
-QVector<uint8_t> F2FrameToF1Frame::decoderC1(QVector<uint8_t> data) {
-    // The error correction decoder C1 decodes a (32,28) Reed-Solomon code.
-    // There are 28 bytes of input data and 4 parity bytes P in bytes 28-31.
-
-    if (data.size() != 32) {
-        qFatal("F2FrameToF1Frame::encoderC1(): Data must be a QVector of 32 integers in the range 0-255.");
-    }
-
-    // Decode the data
-    data = circ.c1_decode(data);
-
-    // Strip the parity bytes
-    data = data.mid(0, 32-4);
-
-    if (data.size() != 32-4) {
-        qFatal("F2FrameToF1Frame::encoderC1(): Attempted to return an incorrect number of bytes!");
-    }
-
-    return data;
 }
 
 F1FrameToData24::F1FrameToData24() {

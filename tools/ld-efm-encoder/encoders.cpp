@@ -28,10 +28,7 @@
 #include <QtGlobal>
 #include <QDebug>
 
-#include "delay_lines.h"
-#include "frame.h"
 #include "encoders.h"
-#include "subcode.h"
 
 // Data24ToF1Frame class implementation
 Data24ToF1Frame::Data24ToF1Frame() {}
@@ -72,7 +69,11 @@ bool Data24ToF1Frame::is_ready() const {
 }
 
 // F1FrameToF2Frame class implementation
-F1FrameToF2Frame::F1FrameToF2Frame() {}
+F1FrameToF2Frame::F1FrameToF2Frame() 
+    : delay_line1({0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1}),
+      delay_line2({0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2}),
+      delay_lineM({108, 104, 100, 96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4, 0})
+{}
 
 void F1FrameToF2Frame::push_frame(F1Frame f1_frame) {
     input_buffer.enqueue(f1_frame);
@@ -93,24 +94,13 @@ void F1FrameToF2Frame::process_queue() {
         QVector<uint8_t> data = f1_frame.get_data();
 
         // Process the data
-        data = delay_line2.process(data);
-        data = interleave(data);
-        
-        // Use the next two lines to remove the interleave
-        // data.resize(28);
-        // data = data.mid(0, 12) + QVector<uint8_t>(4, 0) + data.mid(12, 12);
-        
-        data = encoderC2(data);
-
-        data = delay_lineM.process(data);
-        data = encoderC1(data);
-
-        // Use the next two lines to remove the C1 encoding
-        //data.resize(32);
-        //data = data.mid(0, 28) + QVector<uint8_t>(4, 0);
-
-        data = delay_line1.process(data);
-        data = inverter(data);
+        data = delay_line2.push(data);
+        data = interleave.interleave(data);
+        data = circ.c2_encode(data);
+        data = delay_lineM.push(data);
+        data = circ.c1_encode(data);
+        data = delay_line1.push(data);
+        data = inverter.invert_parity(data);
 
         // Put the resulting data into an F2 frame and push it to the output buffer
         F2Frame f2_frame;
@@ -121,125 +111,6 @@ void F1FrameToF2Frame::process_queue() {
 
 bool F1FrameToF2Frame::is_ready() const {
     return !output_buffer.isEmpty();
-}
-
-// Perform the interleaving operation on the input data in accordance with
-// ECMA-130 issue 2 page 35 ("Interleaving")
-QVector<uint8_t> F1FrameToF2Frame::interleave(QVector<uint8_t> data) {
-    // We take 24 bytes in and return 24 bytes out
-    QVector<uint8_t> interleaved_data(24, 0);
-
-    interleaved_data[0]  = data[0]; 
-    interleaved_data[1]  = data[1];
-
-    interleaved_data[6]  = data[2];
-    interleaved_data[7]  = data[3];
-
-    interleaved_data[12] = data[4];
-    interleaved_data[13] = data[5];
-
-    interleaved_data[18] = data[6];
-    interleaved_data[19] = data[7];
-
-    interleaved_data[2] = data[8];
-    interleaved_data[3] = data[9];
-
-    interleaved_data[8] = data[10];
-    interleaved_data[9] = data[11];
-
-    interleaved_data[14] = data[12]; 
-    interleaved_data[15] = data[13];
-
-    interleaved_data[20] = data[14];
-    interleaved_data[21] = data[15];
-
-    interleaved_data[4] = data[16];
-    interleaved_data[5] = data[17];
-
-    interleaved_data[10] = data[18];
-    interleaved_data[11] = data[19];
-
-    interleaved_data[16] = data[20];
-    interleaved_data[17] = data[21];
-
-    interleaved_data[22] = data[22];
-    interleaved_data[23] = data[23];
-
-    return interleaved_data;
-}
-
-// Invert the P and Q parity bytes in accordance with
-// ECMA-130 issue 2 page 35
-QVector<uint8_t> F1FrameToF2Frame::inverter(QVector<uint8_t> data) {
-    // Invert bytes 12-15 and 28-31
-    for (int i = 12; i < 16; ++i) {
-        data[i] = ~data[i] & 0xFF;
-    }
-    for (int i = 28; i < 32; ++i) {
-        data[i] = ~data[i] & 0xFF;
-    }
-    return data;
-}
-
-QVector<uint8_t> F1FrameToF2Frame::encoderC2(QVector<uint8_t> data) {
-    // The error correction encoder C2 generates a (28,24) Reed-Solomon code.
-    // There are four parity bytes Q output from 24 bytes of input.
-
-    // We expect 24 bytes of input data (12+12)
-    if (data.size() != 24) {
-        qFatal("F1FrameToF2Frame::encoderC2(): Data must be a QVector of 24 integers in the range 0-255.");
-    }
-
-    // QString dataString;
-    // for (int i = 0; i < data.size(); ++i) {
-    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
-    // }
-    // qInfo().noquote() << " C2 Input data:" << dataString.trimmed();
-
-    data = circ.c2_encode(data);
-
-    // dataString.clear();
-    // for (int i = 0; i < data.size(); ++i) {
-    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
-    // }
-    // qInfo().noquote() << "C2 Output data:" << dataString.trimmed();
-
-    // // Test the encoding by decoding the data with the following line:
-    // QVector<uint8_t> decoded_data = circ.c2_decode(data);
-
-    if (data.size() != 28) {
-        qFatal("F1FrameToF2Frame::encoderC2(): CIRC C2 encoding failed - output data is not 28 bytes long.");
-    }
-
-    return data;
-}
-
-QVector<uint8_t> F1FrameToF2Frame::encoderC1(QVector<uint8_t> data) {
-    // The error correction encoder C1 generates a (32,28) Reed-Solomon code.
-    // There are four parity bytes P output from 28 bytes of input.
-
-    if (data.size() != 28) {
-        qFatal("F1FrameToF2Frame::encoderC1(): Data must be a QVector of 28 integers in the range 0-255.");
-    }
-
-    // QString dataString;
-    // for (int i = 0; i < data.size(); ++i) {
-    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
-    // }
-    // qInfo().noquote() << " C1 Input data:" << dataString.trimmed();
-
-    // Add space for the parity bytes
-    data.resize(32);
-
-    data = circ.c1_encode(data);
-    
-    // dataString.clear();
-    // for (int i = 0; i < data.size(); ++i) {
-    //     dataString.append(QString("%1 ").arg(data[i], 2, 16, QChar('0')));
-    // }
-    // qInfo().noquote() << "C1 Output data:" << dataString.trimmed();
-
-    return data;
 }
 
 // F2FrameToF3Frame class implementation

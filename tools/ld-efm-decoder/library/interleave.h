@@ -1,13 +1,13 @@
 /************************************************************************
 
-    delay_lines.h
+    interleave.cpp
 
-    ld-efm-encoder - EFM data encoder
+    ld-efm-decoder - EFM data decoder
     Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-encoder is free software: you can redistribute it and/or
+    ld-efm-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,39 +22,10 @@
 
 ************************************************************************/
 
-#ifndef DELAY_LINES_H
-#define DELAY_LINES_H
-
 #include <QVector>
-#include <QQueue>
-#include <QMap>
-#include <cstdint>
 
-class DelayLine2 {
-public:
-    DelayLine2();
-    QVector<uint8_t> process(QVector<uint8_t> input_data);
-
-private:
-    QMap<int, QQueue<uint8_t>> delay_buffers;
+class Interleave {
+    public:
+        Interleave();
+        QVector<uint8_t> interleave(QVector<uint8_t> input_data);
 };
-
-class DelayLine1 {
-public:
-    DelayLine1();
-    QVector<uint8_t> process(QVector<uint8_t> input_data);
-
-private:
-    QMap<int, QQueue<uint8_t>> delay_buffers;
-};
-
-class DelayLineM {
-public:
-    DelayLineM();
-    QVector<uint8_t> process(QVector<uint8_t> input_data);
-
-private:
-    QVector<QQueue<uint8_t>> delay_buffers;
-};
-
-#endif // DELAY_LINES_H

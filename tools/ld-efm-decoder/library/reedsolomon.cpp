@@ -34,38 +34,72 @@ ReedSolomon::ReedSolomon() {}
 // Perform a C1 Reed-Solomon encoding operation on the input data
 // This is a (32,28) Reed-Solomon code
 QVector<uint8_t> ReedSolomon::c1_encode(QVector<uint8_t> input_data) {
+    // Ensure input data is 28 bytes long
+    if (input_data.size() != 28) {
+        qDebug() << "ReedSolomon::c1_encode - Input data must be 28 bytes long";
+        return input_data;
+    }
+
     // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(input_data.begin(), input_data.end()-4);
+    std::vector<uint8_t> tmp_data(input_data.begin(), input_data.end());
 
     // Encode the data
     c1rs.encode(tmp_data);
 
-    // Extract parity symbols
+    // Extract parity symbols from the encoded data
     std::vector<uint8_t> parity(tmp_data.begin() + 28, tmp_data.end());
 
-    // Insert the parity bytes back into the original data (bytes 28-31)
+    // Append the parity bytes onto the original data (bytes 28-31)
     for (int i = 0; i < 4; ++i) {
-        input_data[28 + i] = parity[i];
+        input_data.append(parity[i]);
     }
 
     return input_data;
 }
 
 // Perform a C1 Reed-Solomon decoding operation on the input data
-QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> encoded_data) {
+QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
+    // Ensure input data is 32 bytes long
+    if (input_data.size() != 32) {
+        qDebug() << "ReedSolomon::c1_decode - Input data must be 32 bytes long";
+        return input_data;
+    }
+
     // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(encoded_data.begin(), encoded_data.end());
+    std::vector<uint8_t> tmp_data(input_data.begin(), input_data.end());
+
+    int fixed = -1;
 
     // Decode the data
-    c1rs.decode(tmp_data);
+    fixed = c1rs.decode(tmp_data);
 
-    // Convert the std::vector back to a QVector
-    encoded_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+    if (fixed != 0) {
+        if (fixed > 0 && fixed <= 3) {
+            qDebug() << "ReedSolomon::c1_decode - Fixed" << fixed << "errors";
+            qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
+            qDebug() << "ReedSolomon::c1_decode - Corrected data:" << QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+        } else {
+            if (fixed > 3) {
+                qDebug() << "ReedSolomon::c1_decode - Too many errors to correct (" << fixed << ") C2 is unrecoverable";
+            } else {
+                qDebug() << "ReedSolomon::c1_decode - ezpwd returned -1";
+            }
+        }
+    }
 
-    return encoded_data;
+    // Convert the std::vector back to a QVector and strip the parity bytes
+    input_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.end() - 4);
+
+    return input_data;
 }
 
-QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
+QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> input_data) {
+    // Ensure input data is 24 bytes long
+    if (input_data.size() != 24) {
+        qDebug() << "ReedSolomon::c2_encode - Input data must be 24 bytes long";
+        return input_data;
+    }
+
     // Since we need the 'parity' in the middle of the data (positions 12-15) we
     // have to trick ezpwd into thinking the last 4 bytes of data are parity bytes
     // and ask it to recover the "middle bytes" using the parity bytes at the end.
@@ -84,13 +118,13 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
     std::vector<uint8_t> tmp_data;
 
     // Copy the first 12 bytes of the input data
-    tmp_data.insert(tmp_data.end(), data.begin(), data.begin() + 12);
+    tmp_data.insert(tmp_data.end(), input_data.begin(), input_data.begin() + 12);
 
     // Insert 4 zeros for the parity bytes
     tmp_data.insert(tmp_data.end(), 4, 0);
 
     // Copy the last 12 bytes of the input data
-    tmp_data.insert(tmp_data.end(), data.end() - 12, data.end());
+    tmp_data.insert(tmp_data.end(), input_data.end() - 12, input_data.end());
 
     // Mark the parity byte positions as erasures (12-15)
     std::vector<int> erasures = {12, 13, 14, 15};  // 0-based indices of "missing" bytes
@@ -104,9 +138,15 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> data) {
 }
 
 // Perform a C2 Reed-Solomon decoding operation on the input data
-QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> encoded_data) {
+QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> input_data) {
+    // Ensure input data is 28 bytes long
+    if (input_data.size() != 28) {
+        qDebug() << "ReedSolomon::c2_decode - Input data must be 28 bytes long";
+        return input_data;
+    }
+
     // Convert the QVector to a std::vector for the ezpwd library
-    std::vector<uint8_t> tmp_data(encoded_data.begin(), encoded_data.end());
+    std::vector<uint8_t> tmp_data(input_data.begin(), input_data.end());
 
     std::vector<int> position;
     std::vector<int> erasures;
@@ -118,7 +158,7 @@ QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> encoded_data) {
     if (fixed != 0) {
         if (fixed > 0 && fixed <= 3) {
             qDebug() << "ReedSolomon::c2_decode - Fixed" << fixed << "errors";
-            qDebug() << "ReedSolomon::c2_decode - Original data:" << encoded_data;
+            qDebug() << "ReedSolomon::c2_decode - Original data:" << input_data;
             qDebug() << "ReedSolomon::c2_decode - Corrected data:" << QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
         } else {
             if (fixed > 3) {
@@ -131,7 +171,7 @@ QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> encoded_data) {
 
     // Convert the std::vector back to a QVector and remove the parity bytes
     // by copying bytes 0-11 and 16-27 to the output data
-    encoded_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.begin() + 12) + QVector<uint8_t>(tmp_data.begin() + 16, tmp_data.end());
+    input_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.begin() + 12) + QVector<uint8_t>(tmp_data.begin() + 16, tmp_data.end());
 
-    return encoded_data;
+    return input_data;
 }

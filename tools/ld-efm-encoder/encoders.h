@@ -33,6 +33,8 @@
 #include "frame.h"
 #include "reedsolomon.h"
 #include "subcode.h"
+#include "interleave.h"
+#include "inverter.h"
 
 class Data24ToF1Frame {
 public:
@@ -61,17 +63,14 @@ private:
     QQueue<F1Frame> input_buffer;
     QQueue<F2Frame> output_buffer;
 
-    QVector<uint8_t> interleave(QVector<uint8_t> data);
-    QVector<uint8_t> inverter(QVector<uint8_t> data);
-    QVector<uint8_t> encoderC2(QVector<uint8_t> data);
-    QVector<uint8_t> encoderC1(QVector<uint8_t> data);
-    QVector<uint8_t> reorder_c2_parity_bytes(QVector<uint8_t> data);
-
-    DelayLine2 delay_line2;
-    DelayLine1 delay_line1;
-    DelayLineM delay_lineM;
-
     ReedSolomon circ;
+
+    DelayLines delay_line1;
+    DelayLines delay_line2;
+    DelayLines delay_lineM;
+
+    Interleave interleave;
+    Inverter inverter;
 };
 
 class F2FrameToF3Frame {
