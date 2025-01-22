@@ -99,6 +99,7 @@ public:
     void push_frame(F3Frame f3_frame);
     QVector<uint8_t> pop_frame();
     bool is_ready() const;
+    int32_t get_total_t_values() const;
 
 private:
     void process_queue();
@@ -114,8 +115,9 @@ private:
     void flush_output_data();
 
     QString output_data;
-    int dsv;
+    int32_t dsv;
     bool dsv_direction;
+    int32_t total_t_values;
 
     static const QString sync_header;
     static const QStringList efm_lut;

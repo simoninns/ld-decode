@@ -339,6 +339,9 @@ bool F2FrameToF1Frame::is_ready() const {
     return !output_buffer.isEmpty();
 }
 
+// Note: The F2 frames will not be correct until the delay lines are full
+// So lead-in is required to prevent loss of the input date.  For now we will
+// just discard the data until the delay lines are full.
 void F2FrameToF1Frame::process_queue() {
     // Process the input buffer
     while (!input_buffer.isEmpty()) {
@@ -347,46 +350,30 @@ void F2FrameToF1Frame::process_queue() {
 
         // Process the data
         data = delay_line1.push(data);
-        data = inverter.invert_parity(data);
+        if (data.isEmpty()) continue;
 
-        // Only perform C1 decode if delay 1 is ready
-        if (delay_line1.is_ready()) {
-            data = circ.c1_decode(data);
-        } else {
-            // Fake C1 decode 32 -> 28
-            data.resize(28);
-        }
+        data = inverter.invert_parity(data);
+        data = circ.c1_decode(data);
 
         data = delay_lineM.push(data);
+        if (data.isEmpty()) continue;
 
         // Only perform C2 decode if delay line 1 is full and delay line M is full
-        if (delay_line1.is_ready() && delay_lineM.is_ready()) {
-            data = circ.c2_decode(data);
-        } else {
-            // Fake C2 decode 28 -> 24
-            data = QVector<uint8_t>(data.begin(), data.begin() + 12) + QVector<uint8_t>(data.end() - 12, data.end());
-        }
+        data = circ.c2_decode(data);
 
         data = interleave.deinterleave(data);
+
         data = delay_line2.push(data);
+        if (data.isEmpty()) continue;
 
-        // We will only get valid data is the delay lines are all full, otherwise
-        // some of the data flowing through will be the default value of 0.
-        if (delay_line1.is_ready() && delay_line2.is_ready() && delay_lineM.is_ready()) {
-            // We have valid data
-            valid_f2_frames_count++;
+        // We will only get valid data is the delay lines are all full
+        valid_f2_frames_count++;
 
-            // Put the resulting data into an F1 frame and push it to the output buffer
-            F1Frame f1_frame;
-            f1_frame.set_data(data);
-
-            valid_f2_frames_count++;
-            
-            output_buffer.enqueue(f1_frame);
-        } else {
-            // We have invalid data
-            invalid_f2_frames_count++;
-        }
+        // Put the resulting data into an F1 frame and push it to the output buffer
+        F1Frame f1_frame;
+        f1_frame.set_data(data);
+        valid_f2_frames_count++;
+        output_buffer.enqueue(f1_frame);
     }
 }
 

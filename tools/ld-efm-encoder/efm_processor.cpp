@@ -30,9 +30,7 @@
 #include "audio.h"
 #include "encoders.h"
 
-EfmProcessor::EfmProcessor()
-{
-}
+EfmProcessor::EfmProcessor() {}
 
 bool EfmProcessor::process(QString input_filename, QString output_filename, bool showInput, bool showF1, bool showF2, bool showF3) {
     qDebug() << "EfmProcessor::process(): Encoding EFM data from file: " << input_filename << " to file: " << output_filename;
@@ -117,19 +115,13 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
             // Write the channel data to the output file
             output_file.write(reinterpret_cast<const char*>(channel_data.data()), channel_data.size());
         }
-
-        // Print progress every 25 F1 frames
-        // if (f1_frame_count % 25 == 0) {
-        //     qDebug() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
-        //         f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
-        // }
     }
 
     // Close the input and output files
     audio_data.close();
     output_file.close();
 
-    qInfo() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
+    qInfo() << "Processed" << audio_data_count << "bytes audio," << f3_to_channel.get_total_t_values() << "T-values," << f1_frame_count << "F1 frames," <<
                 f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
     qInfo() << "Encoding complete";
     return true;

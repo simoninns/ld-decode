@@ -87,6 +87,13 @@ F2Frame F1FrameToF2Frame::pop_frame() {
     return output_buffer.dequeue();
 }
 
+// Note: The F2 frames will not be correct until the delay lines are full
+// So lead-in is required to prevent loss of the input date.  For now we will
+// just discard the data until the delay lines are full.
+//
+// This will drop 108+2+1 = 111 F2 frames of data - The decoder will also have
+// the same issue and will loose another 111 frames of data (so you need at least
+// 222 frames of lead-in data to ensure the decoder has enough data to start decoding)
 void F1FrameToF2Frame::process_queue() {
     while (!input_buffer.isEmpty()) {
         // Pop the F1 frame and copy the data
@@ -95,14 +102,19 @@ void F1FrameToF2Frame::process_queue() {
 
         // Process the data
         data = delay_line2.push(data);
+        if (data.isEmpty()) continue;
+
         data = interleave.interleave(data); // 24
         data = circ.c2_encode(data); // 24 + 4 = 28
 
         data = delay_lineM.push(data); // 28
+        if (data.isEmpty()) continue;
+
         data = circ.c1_encode(data); // 28 + 4 = 32
 
         data = inverter.invert_parity(data); // 32
         data = delay_line1.push(data); // 32     
+        if (data.isEmpty()) continue;
 
         // Put the resulting data into an F2 frame and push it to the output buffer
         F2Frame f2_frame;
@@ -182,6 +194,7 @@ F3FrameToChannel::F3FrameToChannel(){
     output_data = "";
     dsv = 0;
     dsv_direction = true;
+    total_t_values = 0;
 }
 
 void F3FrameToChannel::push_frame(F3Frame f3_frame) {
@@ -391,6 +404,7 @@ void F3FrameToChannel::flush_output_data() {
 
             // Append the T-value to the output bytes (the number of zeros plus 1)
             output_bytes.append(zero_count + 1);
+            total_t_values++;
         } else {
             // First bit is zero... input data is invalid!
             qFatal("F3FrameToChannel::flush_output_data(): First bit should not be zero!");
@@ -398,6 +412,10 @@ void F3FrameToChannel::flush_output_data() {
     }
 
     output_buffer.enqueue(output_bytes);
+}
+
+int32_t F3FrameToChannel::get_total_t_values() const {
+    return total_t_values;
 }
 
 // Define the 24-bit sync header for the F3 frame
