@@ -390,6 +390,20 @@ void F2FrameToF1Frame::process_queue() {
     }
 }
 
+// Get the statistics for the C1 decoder
+void F2FrameToF1Frame::get_c1_circ_stats(int32_t &valid_c1s, int32_t &fixed_c1s, int32_t &error_c1s) {
+    valid_c1s = circ.get_valid_c1s();
+    fixed_c1s = circ.get_fixed_c1s();
+    error_c1s = circ.get_error_c1s();
+}
+
+// Get the statistics for the C2 decoder
+void F2FrameToF1Frame::get_c2_circ_stats(int32_t &valid_c2s, int32_t &fixed_c2s, int32_t &error_c2s) {
+    valid_c2s = circ.get_valid_c2s();
+    fixed_c2s = circ.get_fixed_c2s();
+    error_c2s = circ.get_error_c2s();
+}
+
 F1FrameToData24::F1FrameToData24() {
     invalid_f1_frames_count = 0;
     valid_f1_frames_count = 0;

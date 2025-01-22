@@ -130,6 +130,15 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     qInfo() << "Processed" << f3_frame_to_f2.get_valid_f3_frames_count() << "Valid F3 Frames and" << f3_frame_to_f2.get_invalid_f3_frames_count() << "Invalid F3 Frames";
     qInfo() << "Processed" << f2_frame_to_f1.get_valid_f2_frames_count() << "Valid F2 Frames and" << f2_frame_to_f1.get_invalid_f2_frames_count() << "Invalid F2 Frames";
     qInfo() << "Processed" << f1_frame_to_data24.get_valid_f1_frames_count() << "Valid F1 Frames and" << f1_frame_to_data24.get_invalid_f1_frames_count() << "Invalid F1 Frames";
+
+    // Get the statistics for the C1 and C2 decoders
+    int32_t valid_c1s, fixed_c1s, error_c1s;
+    f2_frame_to_f1.get_c1_circ_stats(valid_c1s, fixed_c1s, error_c1s);
+    qInfo() << "C1 Decoder: Valid:" << valid_c1s << "- Fixed:" << fixed_c1s << "- Error:" << error_c1s;
+
+    int32_t valid_c2s, fixed_c2s, error_c2s;
+    f2_frame_to_f1.get_c2_circ_stats(valid_c2s, fixed_c2s, error_c2s);
+    qInfo() << "C2 Decoder: Valid:" << valid_c2s << "- Fixed:" << fixed_c2s << "- Error:" << error_c2s;
     
     qInfo() << "Processed" << f1_frame_count << "F1 Frames," << f2_frame_count << "F2 Frames," << f3_frame_count << "F3 Frames," << channel_byte_count << "Channel Bytes";
 

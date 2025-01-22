@@ -57,6 +57,14 @@ public:
     QVector<uint8_t> c2_encode(QVector<uint8_t> input_data);
     QVector<uint8_t> c2_decode(QVector<uint8_t> input_data);
 
+    int32_t get_valid_c1s();
+    int32_t get_fixed_c1s();
+    int32_t get_error_c1s();
+
+    int32_t get_valid_c2s();
+    int32_t get_fixed_c2s();
+    int32_t get_error_c2s();
+
 private:
     // ezpwd C1 ECMA-130 CIRC configuration
     template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
@@ -70,4 +78,12 @@ private:
 
     C1RS<255, 255-4> c1rs;
     C2RS<255, 255-4> c2rs;
+
+    int32_t valid_c1s;
+    int32_t fixed_c1s;
+    int32_t error_c1s;
+
+    int32_t valid_c2s;
+    int32_t fixed_c2s;
+    int32_t error_c2s;
 };

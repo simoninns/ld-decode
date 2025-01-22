@@ -25,7 +25,16 @@
 #include <QDebug>
 #include "reedsolomon.h"
 
-ReedSolomon::ReedSolomon() {}
+ReedSolomon::ReedSolomon() {
+    // Initialise statistics
+    valid_c1s = 0;
+    fixed_c1s = 0;
+    error_c1s = 0;
+
+    valid_c2s = 0;
+    fixed_c2s = 0;
+    error_c2s = 0;
+}
 
 // Perform a C1 Reed-Solomon encoding operation on the input data
 // This is a (32,28) Reed-Solomon code
@@ -65,13 +74,17 @@ QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
             qDebug() << "ReedSolomon::c1_decode - Fixed" << result << "errors";
             qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
             qDebug() << "ReedSolomon::c1_decode - Corrected data:" << QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+            fixed_c1s++;
         } else {
             if (result > 3) {
                 qDebug() << "ReedSolomon::c1_decode - Too many errors to correct (" << result << ") C2 is unrecoverable";
             } else {
                 qDebug() << "ReedSolomon::c1_decode - ezpwd returned -1";
             }
+            error_c1s++;
         }
+    } else {
+        valid_c1s++;
     }
 
     // Convert the std::vector back to a QVector and strip the parity bytes
@@ -147,13 +160,17 @@ QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> input_data) {
             qDebug() << "ReedSolomon::c2_decode - Fixed" << result << "errors";
             qDebug() << "ReedSolomon::c2_decode - Original data:" << input_data;
             qDebug() << "ReedSolomon::c2_decode - Corrected data:" << QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+            fixed_c2s++;
         } else {
             if (result > 3) {
                 qDebug() << "ReedSolomon::c2_decode - Too many errors to correct (" << result << ") C2 is unrecoverable";
             } else {
                 qDebug() << "ReedSolomon::c2_decode - ezpwd returned -1";
             }
+            error_c2s++;
         }
+    } else {
+        valid_c2s++;
     }
 
     // Convert the std::vector back to a QVector and remove the parity bytes
@@ -161,4 +178,29 @@ QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> input_data) {
     input_data = QVector<uint8_t>(tmp_data.begin(), tmp_data.begin() + 12) + QVector<uint8_t>(tmp_data.begin() + 16, tmp_data.end());
 
     return input_data;
+}
+
+// Getter functions for the statistics
+int32_t ReedSolomon::get_valid_c1s() {
+    return valid_c1s;
+}
+
+int32_t ReedSolomon::get_fixed_c1s() {
+    return fixed_c1s;
+}
+
+int32_t ReedSolomon::get_error_c1s() {
+    return error_c1s;
+}
+
+int32_t ReedSolomon::get_valid_c2s() {
+    return valid_c2s;
+}
+
+int32_t ReedSolomon::get_fixed_c2s() {
+    return fixed_c2s;
+}
+
+int32_t ReedSolomon::get_error_c2s() {
+    return error_c2s;
 }
