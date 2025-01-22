@@ -348,16 +348,45 @@ void F2FrameToF1Frame::process_queue() {
         // Process the data
         data = delay_line1.push(data);
         data = inverter.invert_parity(data);
-        data = circ.c1_decode(data);
+
+        // Only perform C1 decode if delay 1 is ready
+        if (delay_line1.is_ready()) {
+            data = circ.c1_decode(data);
+        } else {
+            // Fake C1 decode 32 -> 28
+            data.resize(28);
+        }
+
         data = delay_lineM.push(data);
-        data = circ.c2_decode(data);
-        data = interleave.interleave(data);
+
+        // Only perform C2 decode if delay line 1 is full and delay line M is full
+        if (delay_line1.is_ready() && delay_lineM.is_ready()) {
+            data = circ.c2_decode(data);
+        } else {
+            // Fake C2 decode 28 -> 24
+            data = QVector<uint8_t>(data.begin(), data.begin() + 12) + QVector<uint8_t>(data.end() - 12, data.end());
+        }
+
+        data = interleave.deinterleave(data);
         data = delay_line2.push(data);
 
-        // Put the resulting data into an F1 frame and push it to the output buffer
-        F1Frame f1_frame;
-        f1_frame.set_data(data);
-        output_buffer.enqueue(f1_frame);
+        // We will only get valid data is the delay lines are all full, otherwise
+        // some of the data flowing through will be the default value of 0.
+        if (delay_line1.is_ready() && delay_line2.is_ready() && delay_lineM.is_ready()) {
+            // We have valid data
+            valid_f2_frames_count++;
+
+            // Put the resulting data into an F1 frame and push it to the output buffer
+            F1Frame f1_frame;
+            f1_frame.set_data(data);
+
+            valid_f2_frames_count++;
+            
+            output_buffer.enqueue(f1_frame);
+        } else {
+            // We have invalid data
+            invalid_f2_frames_count++;
+        }
     }
 }
 
@@ -389,6 +418,12 @@ void F1FrameToData24::process_queue() {
     while (!input_buffer.isEmpty()) {
         F1Frame f1_frame = input_buffer.dequeue();
         QVector<uint8_t> data = f1_frame.get_data();
+
+        // ECMA-130 issue 2 page 16 - Clause 16
+        // All byte pairs are swapped by the F1 Frame encoder
+        for (int i = 0; i < data.size(); i += 2) {
+            std::swap(data[i], data[i + 1]);
+        }
 
         // Convert the data to a QByteArray
         QByteArray byte_data;

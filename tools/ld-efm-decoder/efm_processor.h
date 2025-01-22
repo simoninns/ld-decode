@@ -32,7 +32,7 @@ class EfmProcessor
 public:
     EfmProcessor();
 
-    bool process(QString input_filename, QString output_filename, bool showF1, bool showF2, bool showF3);
+    bool process(QString input_filename, QString output_filename, bool showOutput, bool showF1, bool showF2, bool showF3);
 };
 
 #endif // EFM_PROCESSOR_H

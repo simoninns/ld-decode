@@ -60,9 +60,11 @@ int main(int argc, char *argv[])
     addStandardDebugOptions(parser);
 
     // Add custom options for showing frame data
+    QCommandLineOption showOutputOption("show-output", QCoreApplication::translate("main", "Show output data"));
     QCommandLineOption showF1Option("show-f1", QCoreApplication::translate("main", "Show frame data at level F1"));
     QCommandLineOption showF2Option("show-f2", QCoreApplication::translate("main", "Show frame data at level F2"));
     QCommandLineOption showF3Option("show-f3", QCoreApplication::translate("main", "Show frame data at level F3"));
+    parser.addOption(showOutputOption);
     parser.addOption(showF1Option);
     parser.addOption(showF2Option);
     parser.addOption(showF3Option);
@@ -78,6 +80,7 @@ int main(int argc, char *argv[])
     processStandardDebugOptions(parser);
 
     // Check for custom options
+    bool showOutput = parser.isSet(showOutputOption);
     bool showF1 = parser.isSet(showF1Option);
     bool showF2 = parser.isSet(showF2Option);
     bool showF3 = parser.isSet(showF3Option);
@@ -98,7 +101,7 @@ int main(int argc, char *argv[])
     qInfo() << "Beginning EFM decoding of" << input_filename;
     EfmProcessor efm_processor;
 
-    if (!efm_processor.process(input_filename, output_filename, showF1, showF2, showF3)) {
+    if (!efm_processor.process(input_filename, output_filename, showOutput, showF1, showF2, showF3)) {
         return 1;
     }
 

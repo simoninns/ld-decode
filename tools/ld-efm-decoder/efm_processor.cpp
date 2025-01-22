@@ -32,7 +32,7 @@
 EfmProcessor::EfmProcessor() {
 }
 
-bool EfmProcessor::process(QString input_filename, QString output_filename, bool showF1, bool showF2, bool showF3) {
+bool EfmProcessor::process(QString input_filename, QString output_filename, bool showOutput, bool showF1, bool showF2, bool showF3) {
     qDebug() << "EfmProcessor::Decode(): Decoding EFM from file: " << input_filename << " to file: " << output_filename;
 
     // Prepare the input file
@@ -111,6 +111,15 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
             QByteArray data = f1_frame_to_data24.pop_frame();
             output_file.write(data);
             data24_count += 1;
+
+            if (showOutput) {
+                QString dataString;
+                for (int i = 0; i < data.size(); ++i) {
+                    uint8_t byte = static_cast<uint8_t>(data[i]);
+                    dataString.append(QString("%1 ").arg(byte, 2, 16, QChar('0')));
+                }
+                qDebug().noquote() << "Output data:" << dataString.trimmed();
+            }
         }
     }
 

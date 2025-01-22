@@ -29,7 +29,7 @@
 // Set the data for the frame, ensuring it matches the frame size
 void Frame::set_data(const QVector<uint8_t>& data) {
     if (data.size() != get_frame_size()) {
-        qFatal("Frame::set_data(): Data size does not match frame size");
+        qFatal("Frame::set_data(): Data size of %d does not match frame size of %d", data.size(), get_frame_size());
     }
     frame_data = data;
 }

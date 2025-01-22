@@ -95,12 +95,14 @@ void F1FrameToF2Frame::process_queue() {
 
         // Process the data
         data = delay_line2.push(data);
-        data = interleave.interleave(data);
-        data = circ.c2_encode(data);
-        data = delay_lineM.push(data);
-        data = circ.c1_encode(data);
-        data = delay_line1.push(data);
-        data = inverter.invert_parity(data);
+        data = interleave.interleave(data); // 24
+        data = circ.c2_encode(data); // 24 + 4 = 28
+
+        data = delay_lineM.push(data); // 28
+        data = circ.c1_encode(data); // 28 + 4 = 32
+
+        data = inverter.invert_parity(data); // 32
+        data = delay_line1.push(data); // 32     
 
         // Put the resulting data into an F2 frame and push it to the output buffer
         F2Frame f2_frame;
