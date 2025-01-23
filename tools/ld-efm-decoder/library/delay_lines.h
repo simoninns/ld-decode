@@ -37,6 +37,7 @@ public:
     bool is_ready();
     int32_t get_number_of_delays();
     void flush();
+    QVector<QQueue<uint8_t>> get_delay_buffers(); // Add this line
 
 private:
     QVector<int> delay_lengths;

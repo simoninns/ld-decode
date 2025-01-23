@@ -30,6 +30,8 @@
 #include "audio.h"
 #include "encoders.h"
 
+#include "delay_lines.h"
+
 EfmProcessor::EfmProcessor() {}
 
 bool EfmProcessor::process(QString input_filename, QString output_filename, bool showInput, bool showF1, bool showF2, bool showF3) {
@@ -124,5 +126,6 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     qInfo() << "Processed" << audio_data_count << "bytes audio," << f3_to_channel.get_total_t_values() << "T-values," << f1_frame_count << "F1 frames," <<
                 f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
     qInfo() << "Encoding complete";
+
     return true;
 }

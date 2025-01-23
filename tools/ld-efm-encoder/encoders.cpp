@@ -70,9 +70,9 @@ bool Data24ToF1Frame::is_ready() const {
 
 // F1FrameToF2Frame class implementation
 F1FrameToF2Frame::F1FrameToF2Frame() 
-    : delay_line1({0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1}),
-      delay_line2({0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2}),
-      delay_lineM({108, 104, 100, 96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4, 0})
+    : delay_line1({1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0}),
+      delay_line2({2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0}),
+      delay_lineM({0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108})
 {}
 
 void F1FrameToF2Frame::push_frame(F1Frame f1_frame) {
@@ -112,9 +112,10 @@ void F1FrameToF2Frame::process_queue() {
 
         data = circ.c1_encode(data); // 28 + 4 = 32
 
-        data = inverter.invert_parity(data); // 32
         data = delay_line1.push(data); // 32     
         if (data.isEmpty()) continue;
+
+        data = inverter.invert_parity(data); // 32
 
         // Put the resulting data into an F2 frame and push it to the output buffer
         F2Frame f2_frame;

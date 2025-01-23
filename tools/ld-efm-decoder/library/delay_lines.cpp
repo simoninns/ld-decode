@@ -26,6 +26,7 @@
 #include <QQueue>
 #include <QtGlobal>
 #include <QDebug>
+#include <iostream>
 
 #include "delay_lines.h"
 
@@ -113,4 +114,8 @@ void DelayLines::flush() {
         delay_buffers[i].clear();
     }
     push_count = 0;
+}
+
+QVector<QQueue<uint8_t>> DelayLines::get_delay_buffers() {
+    return delay_buffers;
 }
