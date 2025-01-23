@@ -1,6 +1,6 @@
 /************************************************************************
 
-    audio.h
+    data24.h
 
     ld-efm-encoder - EFM data encoder
     Copyright (C) 2025 Simon Inns
@@ -22,23 +22,30 @@
 
 ************************************************************************/
 
-#ifndef AUDIO_H
-#define AUDIO_H
+#ifndef DATA24_H
+#define DATA24_H
 
 #include <QVector>
 #include <QString>
 #include <QByteArray>
+#include <QFile>
 
-class AudioToData {
+class Data24 {
 public:
-    AudioToData(const QString filename);
-    bool open();
-    void close();
-    QVector<uint8_t> read_24_bytes();
+    Data24(const QString _filename, bool _is_wav);
+    ~Data24();
+    QVector<uint8_t> read();
+    bool is_ready() const;
+    void show_data();
 
 private:
     QFile file;
-    QString _filename;
+    QString filename;
+    bool is_wav;
+    bool ready;
+    QVector<uint8_t> last_frame;
+
+    bool open();
 };
 
-#endif // AUDIO_H
+#endif // DATA24_H

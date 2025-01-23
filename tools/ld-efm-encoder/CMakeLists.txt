@@ -1,7 +1,7 @@
 add_executable(ld-efm-encoder
     main.cpp
     efm_processor.cpp
-    audio.cpp
+    data24.cpp
     subcode.cpp
     encoders.cpp
     ../ld-efm-decoder/library/frame.cpp

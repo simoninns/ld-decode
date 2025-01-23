@@ -27,19 +27,19 @@
 #include <QFile>
 
 #include "efm_processor.h"
-#include "audio.h"
+#include "data24.h"
 #include "encoders.h"
 
 #include "delay_lines.h"
 
 EfmProcessor::EfmProcessor() {}
 
-bool EfmProcessor::process(QString input_filename, QString output_filename, bool showInput, bool showF1, bool showF2, bool showF3) {
-    qDebug() << "EfmProcessor::process(): Encoding EFM data from file: " << input_filename << " to file: " << output_filename;
+bool EfmProcessor::process(QString input_filename, QString output_filename) {
+    qDebug() << "EfmProcessor::process(): Encoding EFM data from file:" << input_filename << "to file:" << output_filename;
 
-    AudioToData audio_data(input_filename);
-    if (!audio_data.open()) {
-        qDebug() << "EfmProcessor::process(): Failed to load audio file: " << input_filename;
+    Data24 data24(input_filename, is_input_data_wav);
+    if (!data24.is_ready()) {
+        qDebug() << "EfmProcessor::process(): Failed to load data file:" << input_filename;
         return false;
     }
 
@@ -47,13 +47,13 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     QFile output_file(output_filename);
 
     if (!output_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qDebug() << "EfmProcessor::process(): Failed to open output file: " << output_filename;
+        qDebug() << "EfmProcessor::process(): Failed to open output file:" << output_filename;
         return false;
     }
 
     // Audio data
-    QVector<uint8_t> audio_data_frame;
-    uint32_t audio_data_count = 0;
+    QVector<uint8_t> data24_frame;
+    uint32_t data24_count = 0;
 
     // Prepare the encoders
     Data24ToF1Frame data24_to_f1;
@@ -67,19 +67,13 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     uint32_t channel_byte_count = 0;
 
     // Process the input audio data 24 bytes at a time
-    while (!(audio_data_frame = audio_data.read_24_bytes()).isEmpty()) {
-        audio_data_count += 24;
+    while (!(data24_frame = data24.read()).isEmpty()) {
+        data24_count += 24;
 
-        if (showInput) {
-            QString dataString;
-            for (int i = 0; i < audio_data_frame.size(); ++i) {
-                dataString.append(QString("%1 ").arg(audio_data_frame[i], 2, 16, QChar('0')));
-            }
-            qDebug().noquote() << "Input data:" << dataString.trimmed();
-        }
+        if (showInput) data24.show_data();
 
         // Push the data to the first converter
-        data24_to_f1.push_frame(audio_data_frame);
+        data24_to_f1.push_frame(data24_frame);
 
         // Are there any F1 frames ready?
         if (data24_to_f1.is_ready()) {
@@ -119,13 +113,24 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
         }
     }
 
-    // Close the input and output files
-    audio_data.close();
+    // Close the output file
     output_file.close();
 
-    qInfo() << "Processed" << audio_data_count << "bytes audio," << f3_to_channel.get_total_t_values() << "T-values," << f1_frame_count << "F1 frames," <<
+    qInfo() << "Processed" << data24_count << "data24 frames," << f3_to_channel.get_total_t_values() << "T-values," << f1_frame_count << "F1 frames," <<
                 f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
     qInfo() << "Encoding complete";
 
     return true;
 }
+
+void EfmProcessor::set_show_data(bool _showInput, bool _showF1, bool _showF2, bool _showF3) {
+    showInput = _showInput;
+    showF1 = _showF1;
+    showF2 = _showF2;
+    showF3 = _showF3;
+}
+
+// Set the input data type (true for WAV, false for raw)
+void EfmProcessor::set_input_type(bool _wavInput) {
+    is_input_data_wav = _wavInput;
+}   

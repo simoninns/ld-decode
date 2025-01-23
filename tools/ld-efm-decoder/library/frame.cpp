@@ -67,7 +67,7 @@ void F1Frame::show_data() {
     for (int i = 0; i < frame_data.size(); ++i) {
         dataString.append(QString("%1 ").arg(frame_data[i], 2, 16, QChar('0')));
     }
-    qDebug().noquote() << "F1Frame data:" << dataString.trimmed();
+    qInfo().noquote() << "F1Frame data:" << dataString.trimmed();
 }
 
 // Constructor for F2Frame, initializes data to the frame size
@@ -85,7 +85,7 @@ void F2Frame::show_data() {
     for (int i = 0; i < frame_data.size(); ++i) {
         dataString.append(QString("%1 ").arg(frame_data[i], 2, 16, QChar('0')));
     }
-    qDebug().noquote() << "F2Frame data:" << dataString.trimmed();
+    qInfo().noquote() << "F2Frame data:" << dataString.trimmed();
 }
 
 // Constructor for F3Frame, initializes data to the frame size
@@ -133,5 +133,5 @@ void F3Frame::show_data() {
     for (int i = 0; i < frame_data.size(); ++i) {
         dataString.append(QString("%1 ").arg(frame_data[i], 2, 16, QChar('0')));
     }
-    qDebug().noquote() << "F3Frame data:" << dataString.trimmed();
+    qInfo().noquote() << "F3Frame data:" << dataString.trimmed();
 }

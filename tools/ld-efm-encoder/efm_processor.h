@@ -32,7 +32,16 @@ class EfmProcessor
 public:
     EfmProcessor();
 
-    bool process(QString input_fileName, QString output_fileName, bool showInput, bool showF1, bool showF2, bool showF);
+    bool process(QString input_fileName, QString output_fileName);
+    void set_show_data(bool _showInput, bool _showF1, bool _showF2, bool _showF3);
+    void set_input_type(bool _wavInput);
+
+private:
+    bool showInput;
+    bool showF1;
+    bool showF2;
+    bool showF3;
+    bool is_input_data_wav;
 };
 
 #endif // EFMPROCESSOR_H

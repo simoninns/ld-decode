@@ -59,7 +59,11 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Add new options for showing frame data
+    // Option to specify input data file type
+    QCommandLineOption inputTypeOption("wav-input", QCoreApplication::translate("main", "Treat input data as WAV file"), "type");
+    parser.addOption(inputTypeOption);
+
+    // Add options for showing frame data
     QCommandLineOption showF1Option("show-f1", QCoreApplication::translate("main", "Show F1 frame data"));
     QCommandLineOption showF2Option("show-f2", QCoreApplication::translate("main", "Show F2 frame data"));
     QCommandLineOption showF3Option("show-f3", QCoreApplication::translate("main", "Show F3 frame data"));
@@ -70,7 +74,7 @@ int main(int argc, char *argv[])
     parser.addOption(showInputOption);
 
     // Positional argument to specify input data file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input audio data file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input data file"));
 
     // Positional argument to specify output audio file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output EFM file"));
@@ -94,16 +98,22 @@ int main(int argc, char *argv[])
     input_filename = positional_arguments.at(0);
     output_filename = positional_arguments.at(1);
 
-    // Perform the processing
-    EfmProcessor efm_processor;
+    // Check for input data type options
+    bool wav_input = parser.isSet(inputTypeOption);
 
-    // Check for custom options
+    // Check for frame data options
     bool showF1 = parser.isSet(showF1Option);
     bool showF2 = parser.isSet(showF2Option);
     bool showF3 = parser.isSet(showF3Option);
     bool showInput = parser.isSet(showInputOption);
 
-    if (!efm_processor.process(input_filename, output_filename, showInput, showF1, showF2, showF3)) {
+    // Perform the processing
+    EfmProcessor efm_processor;
+
+    efm_processor.set_show_data(showInput, showF1, showF2, showF3);
+    efm_processor.set_input_type(wav_input);
+
+    if (!efm_processor.process(input_filename, output_filename)) {
         return 1;
     }
 
