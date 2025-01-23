@@ -68,7 +68,6 @@ bool EfmProcessor::process(QString input_filename, QString output_filename) {
     uint32_t f1_frame_count = 0;
     uint32_t f2_frame_count = 0;
     uint32_t f3_frame_count = 0;
-    uint32_t channel_byte_count = 0;
 
     // Process the EFM data in chunks of 100 T-values
     bool end_of_data = false;
@@ -148,7 +147,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename) {
     qInfo() << "C2 Decoder: Valid:" << valid_c2s << "- Fixed:" << fixed_c2s << "- Error:" << error_c2s
         << "- Total:" << valid_c2s + fixed_c2s + error_c2s << "- Total errors:" << fixed_c2s + error_c2s;
     
-    qInfo() << "Processed" << f1_frame_count << "F1 Frames," << f2_frame_count << "F2 Frames," << f3_frame_count << "F3 Frames," << channel_byte_count << "Channel Bytes";
+    qInfo() << "Processed" << f1_frame_count << "F1 Frames," << f2_frame_count << "F2 Frames," << f3_frame_count << "F3 Frames";
 
     // Should we add a wav header to the output data?
     if (is_output_data_wav) {
@@ -185,8 +184,6 @@ bool EfmProcessor::process(QString input_filename, QString output_filename) {
     input_file.close();
     output_file.close();
 
-    // qInfo() << "Processed" << audio_data_count << "bytes audio," << f1_frame_count << "F1 frames," <<
-    //             f2_frame_count << "F2 frames," << f3_frame_count << "F3 frames," << channel_byte_count << "channel bytes";
     qInfo() << "Encoding complete";
     return true;
 }

@@ -367,7 +367,7 @@ void F2FrameToF1Frame::process_queue() {
         data = delay_line2.push(data);
         if (data.isEmpty()) continue;
 
-        // We will only get valid data is the delay lines are all full
+        // We will only get valid data if the delay lines are all full
         valid_f2_frames_count++;
 
         // Put the resulting data into an F1 frame and push it to the output buffer
@@ -424,7 +424,9 @@ void F1FrameToData24::process_queue() {
         // ECMA-130 issue 2 page 16 - Clause 16
         // All byte pairs are swapped by the F1 Frame encoder
         for (int i = 0; i < data.size(); i += 2) {
-            std::swap(data[i], data[i + 1]);
+            if (i + 1 < data.size()) {
+                std::swap(data[i], data[i + 1]);
+            }
         }
 
         // Convert the data to a QByteArray

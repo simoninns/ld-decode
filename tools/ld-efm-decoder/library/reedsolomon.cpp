@@ -44,6 +44,11 @@ QVector<uint8_t> ReedSolomon::c1_encode(QVector<uint8_t> input_data) {
         qFatal("ReedSolomon::c1_encode - Input data must be 28 bytes long");
     }
 
+    // Check for potential overflow
+    if (static_cast<uint64_t>(input_data.size()) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        qFatal("ReedSolomon::c1_encode - Input data size exceeds maximum allowable size.  Input data size: %d", input_data.size());
+    }
+
     // Convert the QVector to a std::vector for the ezpwd library
     std::vector<uint8_t> tmp_data(input_data.begin(), input_data.end());
     
@@ -60,6 +65,11 @@ QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
     // Ensure input data is 32 bytes long
     if (input_data.size() != 32) {
         qFatal("ReedSolomon::c1_decode - Input data must be 32 bytes long");
+    }
+
+    // Check for potential overflow
+    if (static_cast<uint64_t>(input_data.size()) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        qFatal("ReedSolomon::c1_decode - Input data size exceeds maximum allowable size.  Input data size: %d", input_data.size());
     }
 
     // Convert the QVector to a std::vector for the ezpwd library
@@ -79,8 +89,10 @@ QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
         } else {
             if (result > 3) {
                 qDebug() << "ReedSolomon::c1_decode - Too many errors to correct (" << result << ") C2 is unrecoverable";
+                qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
             } else {
                 qDebug() << "ReedSolomon::c1_decode - ezpwd returned -1";
+                qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
             }
             error_c1s++;
         }
@@ -100,6 +112,11 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> input_data) {
     // Ensure input data is 24 bytes long
     if (input_data.size() != 24) {
         qFatal("ReedSolomon::c2_encode - Input data must be 24 bytes long");
+    }
+
+    // Check for potential overflow
+    if (static_cast<uint64_t>(input_data.size()) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        qFatal("ReedSolomon::c2_encode - Input data size exceeds maximum allowable size.  Input data size: %d", input_data.size());
     }
 
     // Since we need the 'parity' in the middle of the data (positions 12-15) we
@@ -147,6 +164,11 @@ QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> input_data) {
         qFatal("ReedSolomon::c2_decode - Input data must be 28 bytes long");
     }
 
+    // Check for potential overflow
+    if (static_cast<uint64_t>(input_data.size()) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        qFatal("ReedSolomon::c2_decode - Input data size exceeds maximum allowable size.  Input data size: %d", input_data.size());
+    }
+
     // Convert the QVector to a std::vector for the ezpwd library
     std::vector<uint8_t> tmp_data(input_data.begin(), input_data.end());
 
@@ -166,8 +188,10 @@ QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> input_data) {
         } else {
             if (result > 3) {
                 qDebug() << "ReedSolomon::c2_decode - Too many errors to correct (" << result << ") C2 is unrecoverable";
+                qDebug() << "ReedSolomon::c2_decode - Original data:" << input_data;
             } else {
                 qDebug() << "ReedSolomon::c2_decode - ezpwd returned -1";
+                qDebug() << "ReedSolomon::c2_decode - Original data:" << input_data;
             }
             error_c2s++;
         }
