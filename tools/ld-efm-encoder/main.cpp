@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     addStandardDebugOptions(parser);
 
     // Option to specify input data file type
-    QCommandLineOption inputTypeOption("wav-input", QCoreApplication::translate("main", "Treat input data as WAV file"), "type");
+    QCommandLineOption inputTypeOption("wav-input", QCoreApplication::translate("main", "Treat input data as WAV file"));
     parser.addOption(inputTypeOption);
 
     // Add options for showing frame data

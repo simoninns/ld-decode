@@ -318,8 +318,8 @@ F2FrameToF1Frame::F2FrameToF1Frame()
       delay_line2({0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2}),
       delay_lineM({108, 104, 100, 96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4, 0}),
       invalid_f2_frames_count(0),
-      valid_f2_frames_count(0) {
-}
+      valid_f2_frames_count(0) 
+{}
 
 void F2FrameToF1Frame::push_frame(F2Frame data) {
     // Add the data to the input buffer
@@ -349,10 +349,11 @@ void F2FrameToF1Frame::process_queue() {
         QVector<uint8_t> data = f2_frame.get_data();
 
         // Process the data
+        data = inverter.invert_parity(data);
+
         data = delay_line1.push(data);
         if (data.isEmpty()) continue;
 
-        data = inverter.invert_parity(data);
         data = circ.c1_decode(data);
 
         data = delay_lineM.push(data);

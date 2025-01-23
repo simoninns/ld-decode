@@ -32,14 +32,14 @@
 EfmProcessor::EfmProcessor() {
 }
 
-bool EfmProcessor::process(QString input_filename, QString output_filename, bool showOutput, bool showF1, bool showF2, bool showF3) {
-    qDebug() << "EfmProcessor::Decode(): Decoding EFM from file: " << input_filename << " to file: " << output_filename;
+bool EfmProcessor::process(QString input_filename, QString output_filename) {
+    qDebug() << "EfmProcessor::process(): Decoding EFM from file: " << input_filename << " to file: " << output_filename;
 
     // Prepare the input file
     QFile input_file(input_filename);
 
     if (!input_file.open(QIODevice::ReadOnly)) {
-        qDebug() << "EfmProcessor::decode(): Failed to open input file: " << input_filename;
+        qDebug() << "EfmProcessor::process(): Failed to open input file: " << input_filename;
         return false;
     }
 
@@ -47,8 +47,14 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     QFile output_file(output_filename);
 
     if (!output_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qDebug() << "EfmEncoder::encode(): Failed to open output file: " << output_filename;
+        qDebug() << "EfmEncoder::process(): Failed to open output file: " << output_filename;
         return false;
+    }
+
+    // If we are outputting to a WAV file, we need to leave space for the header
+    if (is_output_data_wav) {
+        QByteArray header(44, 0);
+        output_file.write(header);
     }
 
     // Prepare the decoders
@@ -144,6 +150,37 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     
     qInfo() << "Processed" << f1_frame_count << "F1 Frames," << f2_frame_count << "F2 Frames," << f3_frame_count << "F3 Frames," << channel_byte_count << "Channel Bytes";
 
+    // Should we add a wav header to the output data?
+    if (is_output_data_wav) {
+        qDebug() << "EfmProcessor::process(): Adding WAV header to output data";
+        // WAV file header
+        struct WAVHeader {
+            char riff[4] = {'R', 'I', 'F', 'F'};
+            uint32_t chunkSize;
+            char wave[4] = {'W', 'A', 'V', 'E'};
+            char fmt[4] = {'f', 'm', 't', ' '};
+            uint32_t subchunk1Size = 16; // PCM
+            uint16_t audioFormat = 1; // PCM
+            uint16_t numChannels = 2; // Stereo
+            uint32_t sampleRate = 44100; // 44.1kHz
+            uint32_t byteRate;
+            uint16_t blockAlign;
+            uint16_t bitsPerSample = 16; // 16 bits
+            char data[4] = {'d', 'a', 't', 'a'};
+            uint32_t subchunk2Size;
+        };
+
+        WAVHeader header;
+        header.chunkSize = 36 + output_file.size();
+        header.byteRate = header.sampleRate * header.numChannels * header.bitsPerSample / 8;
+        header.blockAlign = header.numChannels * header.bitsPerSample / 8;
+        header.subchunk2Size = output_file.size();
+
+        // Move to the beginning of the file to write the header
+        output_file.seek(0);
+        output_file.write(reinterpret_cast<const char*>(&header), sizeof(WAVHeader));
+    }
+
     // Close the input and output files
     input_file.close();
     output_file.close();
@@ -153,3 +190,15 @@ bool EfmProcessor::process(QString input_filename, QString output_filename, bool
     qInfo() << "Encoding complete";
     return true;
 }
+
+void EfmProcessor::set_show_data(bool _showOutput, bool _showF1, bool _showF2, bool _showF3) {
+    showOutput = _showOutput;
+    showF1 = _showF1;
+    showF2 = _showF2;
+    showF3 = _showF3;
+}
+
+// Set the output data type (true for WAV, false for raw)
+void EfmProcessor::set_output_type(bool _wavOutput) {
+    is_output_data_wav = _wavOutput;
+}   

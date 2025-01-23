@@ -59,6 +59,10 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
+    // Option to specify output data file type
+    QCommandLineOption outputTypeOption("wav-output", QCoreApplication::translate("main", "Add wav header to output data"));
+    parser.addOption(outputTypeOption);
+
     // Add custom options for showing frame data
     QCommandLineOption showOutputOption("show-output", QCoreApplication::translate("main", "Show output data"));
     QCommandLineOption showF1Option("show-f1", QCoreApplication::translate("main", "Show frame data at level F1"));
@@ -97,11 +101,17 @@ int main(int argc, char *argv[])
     input_filename = positional_arguments.at(0);
     output_filename = positional_arguments.at(1);
 
+    // Check for output data type options
+    bool wav_output = parser.isSet(outputTypeOption);
+
     // Perform the processing
     qInfo() << "Beginning EFM decoding of" << input_filename;
     EfmProcessor efm_processor;
 
-    if (!efm_processor.process(input_filename, output_filename, showOutput, showF1, showF2, showF3)) {
+    efm_processor.set_show_data(showOutput, showF1, showF2, showF3);
+    efm_processor.set_output_type(wav_output);
+
+    if (!efm_processor.process(input_filename, output_filename)) {
         return 1;
     }
 

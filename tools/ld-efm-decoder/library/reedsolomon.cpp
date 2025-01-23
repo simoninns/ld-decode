@@ -37,7 +37,7 @@ ReedSolomon::ReedSolomon() {
 }
 
 // Perform a C1 Reed-Solomon encoding operation on the input data
-// This is a (32,28) Reed-Solomon code
+// This is a (32,28) Reed-Solomon encode - 28 bytes in, 32 bytes out
 QVector<uint8_t> ReedSolomon::c1_encode(QVector<uint8_t> input_data) {
     // Ensure input data is 28 bytes long
     if (input_data.size() != 28) {
@@ -55,6 +55,7 @@ QVector<uint8_t> ReedSolomon::c1_encode(QVector<uint8_t> input_data) {
 }
 
 // Perform a C1 Reed-Solomon decoding operation on the input data
+// This is a (32,28) Reed-Solomon encode - 32 bytes in, 28 bytes out
 QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
     // Ensure input data is 32 bytes long
     if (input_data.size() != 32) {
@@ -93,6 +94,8 @@ QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
     return input_data;
 }
 
+// Perform a C2 Reed-Solomon encoding operation on the input data
+// This is a (28,24) Reed-Solomon encode - 24 bytes in, 28 bytes out
 QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> input_data) {
     // Ensure input data is 24 bytes long
     if (input_data.size() != 24) {
@@ -129,9 +132,7 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> input_data) {
     std::vector<int> erasures = {12, 13, 14, 15};  // 0-based indices of "missing" bytes
 
     // Decode and correct erasures (i.e. insert the missing parity bytes in the middle)
-    //qDebug() << "ReedSolomon::c2_encode - **coded data:" << tmp_data;
     c2rs.decode(tmp_data, erasures);
-    //qDebug() << "ReedSolomon::c2_encode - encoded data:" << tmp_data;
 
     // Copy the data back to a QVector
     QVector<uint8_t> output_data(tmp_data.begin(), tmp_data.end());
@@ -139,6 +140,7 @@ QVector<uint8_t> ReedSolomon::c2_encode(QVector<uint8_t> input_data) {
 }
 
 // Perform a C2 Reed-Solomon decoding operation on the input data
+// This is a (28,24) Reed-Solomon encode - 28 bytes in, 24 bytes out
 QVector<uint8_t> ReedSolomon::c2_decode(QVector<uint8_t> input_data) {
     // Ensure input data is 28 bytes long
     if (input_data.size() != 28) {

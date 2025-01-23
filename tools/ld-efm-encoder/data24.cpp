@@ -33,8 +33,12 @@
 Data24::Data24(const QString _filename, bool _is_wav) : filename(_filename), file(_filename), is_wav(_is_wav) {
     ready = false;
 
-    // Open the data file
-    open();
+    // Are we reading a WAV file or raw data?
+    if (is_wav) {
+        open_wav();
+    } else {
+        open_raw();
+    }
 }
 
 Data24::~Data24() {
@@ -42,9 +46,53 @@ Data24::~Data24() {
     ready = false;
 }
 
-bool Data24::open() {
+bool Data24::open_raw() {
     if (!file.open(QIODevice::ReadOnly)) {
-        qWarning() << "Data24::Data24() - Failed to open file:" << filename;
+        qWarning() << "Data24::open_raw() - Failed to open file:" << filename;
+        return false;
+    }
+
+    ready = true;
+    return true;
+}
+
+bool Data24::open_wav() {
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "Data24::open_wav() - Failed to open file:" << filename;
+        return false;
+    }
+
+    // Read the WAV header
+    QByteArray header = file.read(44);
+    if (header.size() != 44) {
+        qWarning() << "Data24::open_wav() - Failed to read WAV header from file:" << filename;
+        return false;
+    }
+
+    // Check the WAV header for the correct format
+    if (header.mid(0, 4) != "RIFF" || header.mid(8, 4) != "WAVE") {
+        qWarning() << "Data24::open_wav() - Invalid WAV file format:" << filename;
+        return false;
+    }
+
+    // Check the sampling rate (44.1KHz)
+    quint32 sampleRate = *reinterpret_cast<const quint32*>(header.mid(24, 4).constData());
+    if (sampleRate != 44100) {
+        qWarning() << "Data24::open_wav() - Unsupported sample rate:" << sampleRate << "in file:" << filename;
+        return false;
+    }
+
+    // Check the bit depth (16 bits)
+    quint16 bitDepth = *reinterpret_cast<const quint16*>(header.mid(34, 2).constData());
+    if (bitDepth != 16) {
+        qWarning() << "Data24::open_wav() - Unsupported bit depth:" << bitDepth << "in file:" << filename;
+        return false;
+    }
+
+    // Check the number of channels (stereo)
+    quint16 numChannels = *reinterpret_cast<const quint16*>(header.mid(22, 2).constData());
+    if (numChannels != 2) {
+        qWarning() << "Data24::open_wav() - Unsupported number of channels:" << numChannels << "in file:" << filename;
         return false;
     }
 

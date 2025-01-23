@@ -45,7 +45,8 @@ private:
     bool ready;
     QVector<uint8_t> last_frame;
 
-    bool open();
+    bool open_wav();
+    bool open_raw();
 };
 
 #endif // DATA24_H
