@@ -222,10 +222,13 @@ void F3FrameToChannel::process_queue() {
         QString next_efm;
         QString merging_bits;
 
+        // Verify the channel frame output size
+        uint32_t channel_frame_size = 0;
+
         // Pick the subcode value or a sync0/1 symbol based on the frame type    
-        if (f3_frame.get_frame_type() == F3Frame::Subcode) {
+        if (f3_frame.get_frame_type() == F3Frame::FrameType::SUBCODE) {
             next_efm = convert_8bit_to_efm(f3_frame.get_subcode());
-        } else if (f3_frame.get_frame_type() == F3Frame::Sync0) {
+        } else if (f3_frame.get_frame_type() == F3Frame::FrameType::SYNC0) {
             next_efm = convert_8bit_to_efm(256);
         } else {
             next_efm = convert_8bit_to_efm(257);
@@ -233,6 +236,7 @@ void F3FrameToChannel::process_queue() {
         
         merging_bits = choose_merging_bits(current_efm, next_efm);
         dsv += add_to_output_data(current_efm + merging_bits);
+        channel_frame_size += QString(current_efm + merging_bits).size();
 
         // Now output the F3 frame subcode data
         current_efm = next_efm;
@@ -240,6 +244,7 @@ void F3FrameToChannel::process_queue() {
 
         merging_bits = choose_merging_bits(current_efm, next_efm);
         dsv += add_to_output_data(current_efm + merging_bits);
+        channel_frame_size += QString(current_efm + merging_bits).size();
 
         // Now output the F3 frame data
         for (uint32_t index = 0; index < f3_frame_data.size(); index++) {
@@ -249,6 +254,12 @@ void F3FrameToChannel::process_queue() {
 
             merging_bits = choose_merging_bits(current_efm, next_efm);
             dsv += add_to_output_data(current_efm + merging_bits);
+            channel_frame_size += QString(current_efm + merging_bits).size();
+        }
+
+        // Check if the channel frame is complete
+        if (channel_frame_size != 588) {
+            qFatal("F3FrameToChannel::process_queue(): Channel frame size is not 588 bits. It is %d bits", channel_frame_size);
         }
 
         // Flush the output data to the output buffer
@@ -280,7 +291,7 @@ int32_t F3FrameToChannel::add_to_output_data(const QString& data) {
     return dsv_delta;
 }
 
-// This function calulates the DSV delta for the input data i.e. the change in DSV
+// This function calculates the DSV delta for the input data i.e. the change in DSV
 // if the data is used to generate a channel frame.
 int32_t F3FrameToChannel::calculate_dsv_delta(const QString data) {
     // The DSV is based on transitions between pits and lands in the EFM data

@@ -59,12 +59,12 @@ bool TvaluesToChannel::is_ready() const {
 
 void TvaluesToChannel::process_queue() {
     // Process the input buffer
-    QString bit_string = "";
+    QString bit_string;
 
     while (!input_buffer.isEmpty()) {
         QByteArray t_values = input_buffer.dequeue();
 
-        for (int i = 0; i < t_values.size(); i++) {
+        for (int32_t i = 0; i < t_values.size(); i++) {
             // Convert the T-value to a bit string
             
             // Range check
@@ -80,16 +80,16 @@ void TvaluesToChannel::process_queue() {
 
             // T3 = 100, T4 = 1000, ... , T11 = 10000000000
             bit_string += "1";
-            for (int j = 1; j < t_values[i]; j++) {
+            for (int32_t j = 1; j < t_values[i]; j++) {
                 bit_string += "0";
             }   
         }
     }
 
-    if (bit_string.size() > 0) {
+    if (!bit_string.isEmpty()) {
         // Add the bit string to the output buffer
         output_buffer.enqueue(bit_string);
-    }   
+    }
 }
 
 ChannelToF3Frame::ChannelToF3Frame() {
@@ -133,6 +133,7 @@ void ChannelToF3Frame::process_queue() {
                 // Find the next sync header
                 int next_sync_header_index = internal_buffer.indexOf(sync_header, sync_header_index+1);
 
+                // Did we find the next sync header?
                 if (next_sync_header_index != -1) {
                     // Extract the frame data
                     QString frame_data = internal_buffer.mid(sync_header_index, next_sync_header_index - sync_header_index);
@@ -173,6 +174,8 @@ void ChannelToF3Frame::process_queue() {
                         // Add the frame to the output buffer
                         output_buffer.enqueue(f3_frame);
                     } else {
+                        qDebug() << "next_sync_header_index: " << next_sync_header_index;
+                        qFatal("ChannelToF3Frame::process_queue - Invalid frame size: %d", frame_data.size());
                         invalid_channel_frames_count++;
                     }
 
@@ -180,12 +183,12 @@ void ChannelToF3Frame::process_queue() {
                     internal_buffer.remove(0, next_sync_header_index);
                 } else {
                     // Couldn't find the second sync header... wait for more data
-                    qDebug() << "Couldn't find the second sync header... waiting for more data";
+                    qDebug() << "ChannelToF3Frame::process_queue - Couldn't find the second sync header... waiting for more data";
                     break;
                 }
             } else {
                 // No initial sync header found, throw away the data (apart from the last 24 bits)
-                qDebug() << "No initial sync header found, throwing away 24 bits of data";
+                qDebug() << "ChannelToF3Frame::process_queue - No initial sync header found, throwing away 24 bits of data";
                 internal_buffer = internal_buffer.right(24);
                 break;
             }
@@ -299,9 +302,19 @@ bool F3FrameToF2Frame::is_ready() const {
 void F3FrameToF2Frame::process_queue() {
     // Process the input buffer
     while (!input_buffer.isEmpty()) {
-        // We should do something with the subcode here
-        // but for now we'll just pass the frame through
         F3Frame f3_frame = input_buffer.dequeue();
+
+        // if (f3_frame.get_frame_type() == F3Frame::FrameType::SYNC0) {
+        //     qDebug() << "F3FrameToF2Frame::process_queue - Sync0 frame found";
+        // }
+
+        // if (f3_frame.get_frame_type() == F3Frame::FrameType::SYNC1) {
+        //     qDebug() << "F3FrameToF2Frame::process_queue - Sync1 frame found";
+        // }
+
+        // if (f3_frame.get_frame_type() == F3Frame::FrameType::SUBCODE) {
+        //     qDebug() << "F3FrameToF2Frame::process_queue - Subcode frame found with subcode" << f3_frame.get_subcode();
+        // }
 
         F2Frame f2_frame;
         f2_frame.set_data(f3_frame.get_data());
@@ -348,11 +361,11 @@ void F2FrameToF1Frame::process_queue() {
         F2Frame f2_frame = input_buffer.dequeue();
         QVector<uint8_t> data = f2_frame.get_data();
 
-        // Process the data
-        data = inverter.invert_parity(data);
-
         data = delay_line1.push(data);
         if (data.isEmpty()) continue;
+
+        // Process the data
+        data = inverter.invert_parity(data);
 
         data = circ.c1_decode(data);
 

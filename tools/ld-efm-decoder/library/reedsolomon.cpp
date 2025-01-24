@@ -85,14 +85,22 @@ QVector<uint8_t> ReedSolomon::c1_decode(QVector<uint8_t> input_data) {
             qDebug() << "ReedSolomon::c1_decode - Fixed" << result << "errors";
             qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
             qDebug() << "ReedSolomon::c1_decode - Corrected data:" << QVector<uint8_t>(tmp_data.begin(), tmp_data.end());
+            qFatal("ReedSolomon::c1_decode - Fixed errors should not occur in C1 decoding");
             fixed_c1s++;
         } else {
             if (result > 3) {
                 qDebug() << "ReedSolomon::c1_decode - Too many errors to correct (" << result << ") C2 is unrecoverable";
                 qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
+                qFatal("ReedSolomon::c1_decode - Fixed errors should not occur in C1 decoding");
             } else {
                 qDebug() << "ReedSolomon::c1_decode - ezpwd returned -1";
                 qDebug() << "ReedSolomon::c1_decode - Original data:" << input_data;
+                QString hexData;
+                for (auto byte : input_data) {
+                    hexData.append(QString("%1 ").arg(byte, 2, 16, QChar('0')).toUpper());
+                }
+                qDebug() << "ReedSolomon::c1_decode - Input data (hex):" << hexData.trimmed();
+                qFatal("ReedSolomon::c1_decode - Fixed errors should not occur in C1 decoding");
             }
             error_c1s++;
         }

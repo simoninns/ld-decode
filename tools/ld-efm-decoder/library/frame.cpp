@@ -37,6 +37,7 @@ void Frame::set_data(const QVector<uint8_t>& data) {
 // Get the data for the frame, returning a zero-filled vector if empty
 QVector<uint8_t> Frame::get_data() const {
     if (frame_data.isEmpty()) {
+        qDebug() << "Frame::get_data(): Frame is empty, returning zero-filled vector";
         return QVector<uint8_t>(get_frame_size(), 0);
     }
     return frame_data;
@@ -92,7 +93,7 @@ void F2Frame::show_data() {
 F3Frame::F3Frame() {
     frame_data.resize(get_frame_size());
     subcode = 0;
-    frame_type = Subcode;
+    frame_type = SUBCODE;
 }
 
 // Get the frame size for F3Frame
@@ -102,19 +103,19 @@ int F3Frame::get_frame_size() const {
 
 // Set the frame type as subcode and set the subcode value
 void F3Frame::set_frame_type_as_subcode(uint8_t subcode_value) {
-    frame_type = Subcode;
+    frame_type = SUBCODE;
     subcode = subcode_value;
 }
 
 // Set the frame type as sync0 and set the subcode value to 0
 void F3Frame::set_frame_type_as_sync0() {
-    frame_type = Sync0;
+    frame_type = SYNC0;
     subcode = 0;
 }
 
 // Set the frame type as sync1 and set the subcode value to 0
 void F3Frame::set_frame_type_as_sync1() {
-    frame_type = Sync1;
+    frame_type = SYNC1;
     subcode = 0;
 }
 

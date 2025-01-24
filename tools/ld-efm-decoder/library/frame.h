@@ -59,7 +59,7 @@ public:
 
 class F3Frame : public Frame {
 public:
-    enum FrameType { Subcode, Sync0, Sync1 };
+    enum FrameType { SUBCODE, SYNC0, SYNC1 };
 
     F3Frame();
     int get_frame_size() const override;

@@ -53,6 +53,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename) {
 
     // If we are outputting to a WAV file, we need to leave space for the header
     if (is_output_data_wav) {
+        qDebug() << "EfmProcessor::process(): Outputting to WAV file, adding header";
         QByteArray header(44, 0);
         output_file.write(header);
     }
@@ -76,7 +77,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename) {
         QByteArray t_values = input_file.read(100);
         if (t_values.isEmpty()) {
             end_of_data = true;
-            qDebug() << "End of data";
+            qDebug() << "EfmEncoder::process(): End of data";
         } else {
             t_values_to_channel.push_frame(t_values);
         }
@@ -123,7 +124,7 @@ bool EfmProcessor::process(QString input_filename, QString output_filename) {
                     uint8_t byte = static_cast<uint8_t>(data[i]);
                     dataString.append(QString("%1 ").arg(byte, 2, 16, QChar('0')));
                 }
-                qDebug().noquote() << "Output data:" << dataString.trimmed();
+                qInfo().noquote() << "Output data:" << dataString.trimmed();
             }
         }
     }
