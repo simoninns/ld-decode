@@ -192,10 +192,11 @@ F3FrameToChannel::F3FrameToChannel(){
     // Since we are working with 14-bit EFM symbols, 3 bit merging symbols and
     // a 24 bit frame sync header - the output length of a channel frame is 588 bit (73.5 bytes)
     // so we can't use a QByteArray directly here without introducing unwanted padding
-    output_data = "";
     dsv = 0;
     dsv_direction = true;
     total_t_values = 0;
+
+    previous_channel_frame.clear();
 }
 
 void F3FrameToChannel::push_frame(F3Frame f3_frame) {
@@ -217,63 +218,61 @@ void F3FrameToChannel::process_queue() {
         F3Frame f3_frame = input_buffer.dequeue();
         QVector<uint8_t> f3_frame_data = f3_frame.get_data();
 
+        // Ensure the F3 frame data is 32 bytes long
+        if (f3_frame_data.size() != 32) {
+            qFatal("F3FrameToChannel::process_queue(): F3 frame data must be 24 bytes long.");
+        }
+
         QString channel_frame;
-        int32_t frame_dsv = dsv;
-
-        // Process the F3 frame sync header
-        QString current_efm = sync_header;
-        QString next_efm;
-        QString merging_bits;
-
-        // Firstly we have to output the sync/subcode symbol
+        QString merging_bits = "xxx";
+     
+        // Sync header
+        channel_frame += sync_header;
+        channel_frame += merging_bits;
 
         // Pick the subcode value or a sync0/1 symbol based on the inputF3 frame type    
         if (f3_frame.get_frame_type() == F3Frame::FrameType::SUBCODE) {
-            next_efm = convert_8bit_to_efm(f3_frame.get_subcode());
+            channel_frame += convert_8bit_to_efm(f3_frame.get_subcode());
         } else if (f3_frame.get_frame_type() == F3Frame::FrameType::SYNC0) {
-            next_efm = convert_8bit_to_efm(256);
+            channel_frame += convert_8bit_to_efm(256);
         } else {
-            next_efm = convert_8bit_to_efm(257);
+            channel_frame += convert_8bit_to_efm(257);
         }
-        
-        merging_bits = choose_merging_bits(current_efm, next_efm);
-        channel_frame += current_efm + merging_bits;
-        frame_dsv += calculate_dsv_delta(current_efm + merging_bits);
+        channel_frame += merging_bits;
 
         // Now we output the actual F3 frame data
-        current_efm = next_efm;
-        next_efm = convert_8bit_to_efm(f3_frame_data[0]);
-
-        merging_bits = choose_merging_bits(current_efm, next_efm);
-        channel_frame += current_efm + merging_bits;
-        frame_dsv += calculate_dsv_delta(current_efm + merging_bits);
-
-        // Now output the rest of the F3 frame data
         for (uint32_t index = 0; index < f3_frame_data.size(); index++) {
-            current_efm = convert_8bit_to_efm(f3_frame_data[index]);
-            if (index < f3_frame_data.size()-1) next_efm = convert_8bit_to_efm(f3_frame_data[index+1]);
-            else next_efm = sync_header;
-
-            merging_bits = choose_merging_bits(current_efm, next_efm);
-            channel_frame += current_efm + merging_bits;
-            frame_dsv += calculate_dsv_delta(current_efm + merging_bits);
+            channel_frame += convert_8bit_to_efm(f3_frame_data[index]);
+            channel_frame += merging_bits;
         }
+
+        // Now we add the merging bits to the frame
+        channel_frame = add_merging_bits(channel_frame);
 
         // Sanity check - Frame size should be 588 bits
         if (channel_frame.size() != 588) {
-            qFatal("F3FrameToChannel::process_queue(): BUG - Channel frame size is not 588 bits. It is %d bits", channel_frame.size());
+            qDebug() << "F3FrameToChannel::process_queue(): Channel frame:" << channel_frame;
+            qFatal("F3FrameToChannel::process_queue(): BUG - Merged channel frame size is not 588 bits. It is %d bits", channel_frame.size());
         }
 
         // Sanity check - The frame should only contain one sync header
         if (channel_frame.count(sync_header) != 1) {
-            qFatal("F3FrameToChannel::process_queue(): BUG - Channel frame contains more than one sync header.");
+            qDebug() << "F3FrameToChannel::process_queue(): Channel frame:" << channel_frame;
+            qFatal("F3FrameToChannel::process_queue(): BUG - Channel frame contains %d sync headers.", channel_frame.count(sync_header));
         }
+
+        // Sanity check - This and the previous frame combined should contain only two sync headers (edge case detection)
+        if (!previous_channel_frame.isEmpty()) {
+            QString combined_frames = previous_channel_frame + channel_frame;
+            if (combined_frames.count(sync_header) != 2) {
+                qDebug() << "F3FrameToChannel::process_queue(): Previous frame:" << previous_channel_frame;
+                qDebug() << "F3FrameToChannel::process_queue():  Current frame:" << channel_frame;
+                qFatal("F3FrameToChannel::process_queue(): BUG - Previous and current channel frames combined contains more than two sync headers.");
+            }
+        }   
 
         // Flush the output data to the output buffer
         write_frame(channel_frame);
-
-        // Update the DSV
-        dsv = frame_dsv;
     }
 }
 
@@ -286,14 +285,13 @@ void F3FrameToChannel::write_frame(QString channel_frame) {
         qFatal("F3FrameToChannel::write_frame(): Channel frame size is not 588 bits.");
     }
 
-    // Note: output_data is a string of bits
-    while (channel_frame.size() >= 12) {
+    for (int i = 0; i < channel_frame.size(); ++i) {
         // Is the first bit a 1?
-        if (channel_frame[0] == '1') {
+        if (channel_frame[i] == '1') {
             // Yes, so count the number of 0s until the next 1
             uint32_t zero_count = 0;
-            for (uint32_t i = 1; i < channel_frame.size(); i++) {
-                if (channel_frame[i] == '0') {
+            for (uint32_t j = 1; i < channel_frame.size(); j++) {
+                if (channel_frame[j + i] == '0') {
                     zero_count++;
                 } else {
                     break;
@@ -302,19 +300,19 @@ void F3FrameToChannel::write_frame(QString channel_frame) {
 
             // The number of zeros is not between 2 and 10 - something is wrong in the input data
             if (zero_count < 2 || zero_count > 10) {
-                qInfo() << "F3FrameToChannel::flush_output_data(): Channel frame:" << channel_frame;
-                qInfo() << "F3FrameToChannel::flush_output_data(): Zero count:" << zero_count;  
-                qFatal("F3FrameToChannel::flush_output_data(): Number of zeros between ones is not between 2 and 10.");
+                qInfo() << "F3FrameToChannel::write_frame(): Channel frame:" << channel_frame;
+                qInfo() << "F3FrameToChannel::write_frame(): Zero count:" << zero_count;  
+                qFatal("F3FrameToChannel::write_frame(): Number of zeros between ones is not between 2 and 10.");
             }
 
-            channel_frame.remove(0, zero_count + 1);
+            i += zero_count;
 
             // Append the T-value to the output bytes (the number of zeros plus 1)
             output_bytes.append(zero_count + 1);
             total_t_values++;
         } else {
             // First bit is zero... input data is invalid!
-            qFatal("F3FrameToChannel::flush_output_data(): First bit should not be zero!");
+            qFatal("F3FrameToChannel::write_frame(): First bit should not be zero!");
         }
     }
 
@@ -332,6 +330,175 @@ QString F3FrameToChannel::convert_8bit_to_efm(uint16_t value) {
     } else {
         qFatal("F3FrameToChannel::convert_8bit_to_efm(): Value must be in the range 0 to 257.");
     }
+}
+
+QString F3FrameToChannel::add_merging_bits(QString channel_frame) {
+    // Ensure the channel frame is 588 bits long
+    if (channel_frame.size() != 588) {
+        qFatal("F3FrameToChannel::add_merging_bits(): Channel frame is not 588 bits long.");
+    }
+
+    // We need to add another sync header to the channel frame
+    // to make sure the last merging bit is correct
+    QString merged_frame = channel_frame + sync_header;
+
+    // The merging bits are represented by "xxx".  Each merging bit is preceded by and
+    // followed by an EFM symbol.  Firstly we have to extract the preceeding and following
+    // EFM symbols.
+
+    // There are 34 sets of merging bits in the 588 bit frame
+    for (int i = 0; i < 34; ++i) {
+        QString current_efm;
+        QString next_efm;
+
+        // Set start to the next set of merging bits, the first merging bits are 24 bits in and then every 14 bits
+        uint32_t start = 0;
+        if (i == 0) {
+            // The first EFM symbol is a sync header
+            current_efm = sync_header;
+            start = 24;
+        } else {
+            start = 24 + i * 17;
+
+            // Extract the preceding EFM symbol
+            current_efm = merged_frame.mid(start - 14, 14);
+        }
+
+        // Extract the following EFM symbol
+        if (i == 33) {
+            // If it's the last set of merging bits, the next EFM symbol is the sync header of the next frame
+            next_efm = sync_header;
+        } else {
+            next_efm = merged_frame.mid(start + 3, 14);
+        }
+
+        if (next_efm.isEmpty()) qFatal("F3FrameToChannel::add_merging_bits(): Next EFM symbol is empty.");
+
+        // Get a list of legal merging bit patterns
+        QStringList merging_patterns = get_legal_merging_bit_patterns(current_efm, next_efm);
+
+        // Order the patterns by the resulting DSV delta
+        merging_patterns = order_patterns_by_dsv_delta(merging_patterns, current_efm, next_efm);
+        
+        // Pick the first pattern from the list that doesn't form a spurious sync_header pattern
+        QString merging_bits;
+        for (const QString& pattern : merging_patterns) {
+            QString temp_frame = merged_frame;
+
+            // Add our possible pattern to the frame
+            temp_frame.replace(start, 3, pattern);
+
+            // Remove the first and last 14 bits from the frame
+            // (this is the sync header and the last sync header)
+            temp_frame.remove(0, 14);
+            temp_frame.chop(14);
+
+            // Any spurious sync headers generated?
+            if (temp_frame.count(sync_header) == 0) {
+                merging_bits = pattern;
+                break;
+            }
+        }
+
+        if (merging_bits.isEmpty()) {
+            qFatal("F3FrameToChannel::add_merging_bits(): No legal merging bit pattern found.");
+        }
+
+        // Replace the "xxx" with the chosen merging bits
+        merged_frame.replace(start, 3, merging_bits);
+    }
+
+    // Remove the last sync header
+    merged_frame.chop(sync_header.size());
+
+    // Verify the merged frame is 588 bits long
+    if (merged_frame.size() != 588) {
+        qFatal("F3FrameToChannel::add_merging_bits(): Merged frame is not 588 bits long.");
+    }
+
+    return merged_frame;
+}
+
+// Returns a list of merging bit patterns that don't violate the ECMA-130 rules
+// of at least 2 zeros and no more than 10 zeros between ones
+QStringList F3FrameToChannel::get_legal_merging_bit_patterns(const QString& current_efm, const QString& next_efm) {
+    // Check that current_efm is at least 14 bits long
+    if (current_efm.size() < 14) {
+        qFatal("F3FrameToChannel::get_legal_merging_bit_patterns(): Current EFM symbol is too short.");
+    }
+
+    // Check that next_efm is at least 14 bits long
+    if (next_efm.size() < 14) {
+        qFatal("F3FrameToChannel::get_legal_merging_bit_patterns(): Next EFM symbol is too short.");
+    }
+
+    QStringList patterns;
+    QStringList possible_patterns = {"000", "001", "010", "100"};
+    for (const QString& pattern : possible_patterns) {
+        QString combined = current_efm + pattern + next_efm;
+
+        int max_zeros = 0;
+        int min_zeros = std::numeric_limits<int>::max();
+        int current_zeros = 0;
+        bool inside_zeros = false;
+
+        // Remove leading zeros from the combined string
+        while (combined[0] == '0') {
+            combined.remove(0, 1);
+        }
+
+        for (QChar ch : combined) {
+            if (ch == '1') {
+                if (inside_zeros) {
+                    if (current_zeros > 0) {
+                        max_zeros = qMax(max_zeros, current_zeros);
+                        min_zeros = qMin(min_zeros, current_zeros);
+                    }
+                    current_zeros = 0;
+                    inside_zeros = false;
+                }
+            } else if (ch == '0') {
+                inside_zeros = true;
+                current_zeros++;
+            }
+        }
+
+        // If no zeros were found between ones
+        if (min_zeros == std::numeric_limits<int>::max()) {
+            min_zeros = 0;
+        }
+
+        // Check for illegal 11 pattern
+        if (combined.contains("11")) {
+            min_zeros = 0;
+        }
+
+        // The pattern is only considered if the combined string conforms to the "at least 2 zeros
+        // and no more than 10 zeros between ones" rule
+        if (min_zeros >= 2 && max_zeros <= 10) {
+            patterns.append(pattern);
+        }
+    }
+
+    return patterns;
+}
+
+// Accepts a list of patterns and orders them by DSV delta (lowest to highest)
+QStringList F3FrameToChannel::order_patterns_by_dsv_delta(const QStringList& merging_patterns, const QString& current_efm, const QString& next_efm) {
+    QStringList ordered_patterns;
+    
+    QMap<int32_t, QString> dsv_map;
+    for (int i = 0; i < merging_patterns.size(); ++i) {
+        QString combined = current_efm + merging_patterns[i] + next_efm;
+        int32_t dsv_delta = calculate_dsv_delta(combined);
+        dsv_map.insert(dsv_delta, merging_patterns[i]);
+    }
+
+    for (auto it = dsv_map.begin(); it != dsv_map.end(); ++it) {
+        ordered_patterns.append(it.value());
+    }
+
+    return ordered_patterns;
 }
 
 // This function calculates the DSV delta for the input data i.e. the change in DSV
@@ -366,63 +533,6 @@ int32_t F3FrameToChannel::calculate_dsv_delta(const QString data) {
     }
 
     return dsv_delta;
-}
-
-// Return a list of possible merging bit patterns that don't violate the ECMA-130 rules
-QStringList F3FrameToChannel::get_possible_merging_bit_patterns(const QString& current_efm, const QString& next_efm) {
-    QStringList patterns;
-    QStringList possible_patterns = {"000", "001", "010", "100"};
-    for (const QString& pattern : possible_patterns) {
-        QString combined = current_efm + pattern + next_efm;
-        if (!combined.contains("11") && !combined.contains("101")) {
-            // Check if there are 10 or more zeros between the 1s
-            int zero_count = 0;
-            for (int i = 0; i < combined.size(); ++i) {
-                if (combined[i] == '0') {
-                    zero_count++;
-                } else {
-                    zero_count = 0;
-                }
-                if (zero_count > 10) {
-                    break;
-                }
-            }
-            if (zero_count < 10) {
-                if (current_efm != sync_header && next_efm != sync_header) {
-                    if (!combined.contains(sync_header)) {
-                        patterns.append(pattern);
-                    }
-                } else {
-                    patterns.append(pattern);
-                }
-            }
-        }
-    }
-
-    if (patterns.isEmpty()) {
-        qFatal("F3FrameToChannel::get_possible_merging_bit_patterns(): No possible merging bit patterns found.");
-    }
-    return patterns;
-}
-
-// Choose the merging bit pattern that moves the DSV closest to zero
-QString F3FrameToChannel::choose_merging_bits(const QString& current_efm, const QString& next_efm) {
-    // Get the possible merging bit patterns
-    QStringList possible_patterns = get_possible_merging_bit_patterns(current_efm, next_efm);
-
-    // Choose the pattern that moves the DSV closest to zero
-    QString best_pattern = possible_patterns[0];
-    int best_dsv_delta = std::numeric_limits<int>::max();
-
-    for (const QString& pattern : possible_patterns) {
-        int current_dsv_delta = calculate_dsv_delta(current_efm + pattern + next_efm);
-        if (std::abs(dsv + current_dsv_delta) < std::abs(dsv + best_dsv_delta)) {
-            best_dsv_delta = current_dsv_delta;
-            best_pattern = pattern;
-        }
-    }
-
-    return best_pattern;
 }
 
 int32_t F3FrameToChannel::get_total_t_values() const {

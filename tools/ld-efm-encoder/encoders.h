@@ -109,14 +109,16 @@ private:
 
     void write_frame(QString channel_frame);
     QString convert_8bit_to_efm(uint16_t value);
-    QStringList get_possible_merging_bit_patterns(const QString& current_efm, const QString& next_efm);
-    int32_t calculate_dsv_delta(const QString data);
-    QString choose_merging_bits(const QString& current_efm, const QString& next_efm);
 
-    QString output_data;
+    QString add_merging_bits(QString channel_frame);
+    QStringList get_legal_merging_bit_patterns(const QString& current_efm, const QString& next_efm);
+    QStringList order_patterns_by_dsv_delta(const QStringList& merging_patterns, const QString& current_efm, const QString& next_efm);
+    int32_t calculate_dsv_delta(const QString data);
+
     int32_t dsv;
     bool dsv_direction;
     int32_t total_t_values;
+    QString previous_channel_frame;
 
     static const QString sync_header;
     static const QStringList efm_lut;
