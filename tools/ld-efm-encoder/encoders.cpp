@@ -217,15 +217,17 @@ void F3FrameToChannel::process_queue() {
         F3Frame f3_frame = input_buffer.dequeue();
         QVector<uint8_t> f3_frame_data = f3_frame.get_data();
 
+        QString channel_frame;
+        int32_t frame_dsv = dsv;
+
         // Process the F3 frame sync header
         QString current_efm = sync_header;
         QString next_efm;
         QString merging_bits;
 
-        // Verify the channel frame output size
-        uint32_t channel_frame_size = 0;
+        // Firstly we have to output the sync/subcode symbol
 
-        // Pick the subcode value or a sync0/1 symbol based on the frame type    
+        // Pick the subcode value or a sync0/1 symbol based on the inputF3 frame type    
         if (f3_frame.get_frame_type() == F3Frame::FrameType::SUBCODE) {
             next_efm = convert_8bit_to_efm(f3_frame.get_subcode());
         } else if (f3_frame.get_frame_type() == F3Frame::FrameType::SYNC0) {
@@ -235,36 +237,88 @@ void F3FrameToChannel::process_queue() {
         }
         
         merging_bits = choose_merging_bits(current_efm, next_efm);
-        dsv += add_to_output_data(current_efm + merging_bits);
-        channel_frame_size += QString(current_efm + merging_bits).size();
+        channel_frame += current_efm + merging_bits;
+        frame_dsv += calculate_dsv_delta(current_efm + merging_bits);
 
-        // Now output the F3 frame subcode data
+        // Now we output the actual F3 frame data
         current_efm = next_efm;
         next_efm = convert_8bit_to_efm(f3_frame_data[0]);
 
         merging_bits = choose_merging_bits(current_efm, next_efm);
-        dsv += add_to_output_data(current_efm + merging_bits);
-        channel_frame_size += QString(current_efm + merging_bits).size();
+        channel_frame += current_efm + merging_bits;
+        frame_dsv += calculate_dsv_delta(current_efm + merging_bits);
 
-        // Now output the F3 frame data
+        // Now output the rest of the F3 frame data
         for (uint32_t index = 0; index < f3_frame_data.size(); index++) {
             current_efm = convert_8bit_to_efm(f3_frame_data[index]);
             if (index < f3_frame_data.size()-1) next_efm = convert_8bit_to_efm(f3_frame_data[index+1]);
             else next_efm = sync_header;
 
             merging_bits = choose_merging_bits(current_efm, next_efm);
-            dsv += add_to_output_data(current_efm + merging_bits);
-            channel_frame_size += QString(current_efm + merging_bits).size();
+            channel_frame += current_efm + merging_bits;
+            frame_dsv += calculate_dsv_delta(current_efm + merging_bits);
         }
 
-        // Check if the channel frame is complete
-        if (channel_frame_size != 588) {
-            qFatal("F3FrameToChannel::process_queue(): Channel frame size is not 588 bits. It is %d bits", channel_frame_size);
+        // Sanity check - Frame size should be 588 bits
+        if (channel_frame.size() != 588) {
+            qFatal("F3FrameToChannel::process_queue(): BUG - Channel frame size is not 588 bits. It is %d bits", channel_frame.size());
+        }
+
+        // Sanity check - The frame should only contain one sync header
+        if (channel_frame.count(sync_header) != 1) {
+            qFatal("F3FrameToChannel::process_queue(): BUG - Channel frame contains more than one sync header.");
         }
 
         // Flush the output data to the output buffer
-        flush_output_data();
+        write_frame(channel_frame);
+
+        // Update the DSV
+        dsv = frame_dsv;
     }
+}
+
+void F3FrameToChannel::write_frame(QString channel_frame) {
+    // Since the base class uses QVector<uint8_t> for the output buffer we have to as well
+    QVector<uint8_t> output_bytes;
+
+    // Check the input data size
+    if (channel_frame.size() != 588) {
+        qFatal("F3FrameToChannel::write_frame(): Channel frame size is not 588 bits.");
+    }
+
+    // Note: output_data is a string of bits
+    while (channel_frame.size() >= 12) {
+        // Is the first bit a 1?
+        if (channel_frame[0] == '1') {
+            // Yes, so count the number of 0s until the next 1
+            uint32_t zero_count = 0;
+            for (uint32_t i = 1; i < channel_frame.size(); i++) {
+                if (channel_frame[i] == '0') {
+                    zero_count++;
+                } else {
+                    break;
+                }
+            }
+
+            // The number of zeros is not between 2 and 10 - something is wrong in the input data
+            if (zero_count < 2 || zero_count > 10) {
+                qInfo() << "F3FrameToChannel::flush_output_data(): Channel frame:" << channel_frame;
+                qInfo() << "F3FrameToChannel::flush_output_data(): Zero count:" << zero_count;  
+                qFatal("F3FrameToChannel::flush_output_data(): Number of zeros between ones is not between 2 and 10.");
+            }
+
+            channel_frame.remove(0, zero_count + 1);
+
+            // Append the T-value to the output bytes (the number of zeros plus 1)
+            output_bytes.append(zero_count + 1);
+            total_t_values++;
+        } else {
+            // First bit is zero... input data is invalid!
+            qFatal("F3FrameToChannel::flush_output_data(): First bit should not be zero!");
+        }
+    }
+
+    output_buffer.enqueue(output_bytes);
 }
 
 bool F3FrameToChannel::is_ready() const {
@@ -278,17 +332,6 @@ QString F3FrameToChannel::convert_8bit_to_efm(uint16_t value) {
     } else {
         qFatal("F3FrameToChannel::convert_8bit_to_efm(): Value must be in the range 0 to 257.");
     }
-}
-
-int32_t F3FrameToChannel::add_to_output_data(const QString& data) {
-
-    // Calculate the DSV delta value for the current data
-    int32_t dsv_delta = calculate_dsv_delta(data);    
-
-    // Append the actual data to the output data
-    output_data += data;
-
-    return dsv_delta;
 }
 
 // This function calculates the DSV delta for the input data i.e. the change in DSV
@@ -380,50 +423,6 @@ QString F3FrameToChannel::choose_merging_bits(const QString& current_efm, const 
     }
 
     return best_pattern;
-}
-
-void F3FrameToChannel::flush_output_data() {
-    // Since the base class uses QVector<uint8_t> for the output buffer we have to as well
-    QVector<uint8_t> output_bytes;
-
-    //If there are less than 12 bits in the output data, just return
-    if (output_data.size() < 12) {
-        return;
-    }
-
-    // Note: output_data is a string of bits
-    while (output_data.size() >= 12) {
-        // Is the first bit a 1?
-        if (output_data[0] == '1') {
-            // Yes, so count the number of 0s until the next 1
-            uint32_t zero_count = 0;
-            for (uint32_t i = 1; i < output_data.size(); i++) {
-                if (output_data[i] == '0') {
-                    zero_count++;
-                } else {
-                    break;
-                }
-            }
-
-            // The number of zeros is not between 2 and 10 - something is wrong in the input data
-            if (zero_count < 2 || zero_count > 10) {
-                qInfo() << "F3FrameToChannel::flush_output_data(): Output data:" << output_data;
-                qInfo() << "F3FrameToChannel::flush_output_data(): Zero count:" << zero_count;  
-                qFatal("F3FrameToChannel::flush_output_data(): Number of zeros between ones is not between 2 and 10.");
-            }
-
-            output_data.remove(0, zero_count + 1);
-
-            // Append the T-value to the output bytes (the number of zeros plus 1)
-            output_bytes.append(zero_count + 1);
-            total_t_values++;
-        } else {
-            // First bit is zero... input data is invalid!
-            qFatal("F3FrameToChannel::flush_output_data(): First bit should not be zero!");
-        }
-    }
-
-    output_buffer.enqueue(output_bytes);
 }
 
 int32_t F3FrameToChannel::get_total_t_values() const {
