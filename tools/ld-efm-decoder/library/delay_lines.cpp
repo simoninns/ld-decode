@@ -30,64 +30,23 @@
 
 #include "delay_lines.h"
 
-// Decoder ECMA-130 issue 2 delay line examples:
-//
-// Delay line 1 (32 delays)
-// QVector<int> delay_line1 = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1}
-//
-// Delay line M (28 delays)
-// QVector<int> delay_lineM = {108,104,100,96,92,88,84,80,76,72,68,64,60,56,52,48,44,40,36,32,28,24,20,16,12,8,4,0}
-//
-// Delay line 2 (24 delays)
-// QVector<int> delay_line2 = {0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2}
-
-// Encoder ECMA-130 issue 2 delay line examples:
-//
-// Delay line 1 (32 delays)
-// QVector<int> delay_line1 = {1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0}
-//
-// Delay line M (28 delays)
-// QVector<int> delay_lineM = {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108}
-//
-// Delay line 2 (24 delays)
-// QVector<int> delay_line2 = {2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0,2,2,2,2,0,0,0,0}
-
-DelayLines::DelayLines(QVector<int> _delay_lengths) : delay_lengths(_delay_lengths) {
-    // Record the largest delay length
-    max_delay = *std::max_element(delay_lengths.begin(), delay_lengths.end());
-    
-    // Initialize delay buffers
-    for (int delay : delay_lengths) {
-        QQueue<uint8_t> buffer;
-        for (int j = 0; j < delay; ++j) {
-            buffer.enqueue(0);
-        }
-        delay_buffers.append(buffer);
+DelayLines::DelayLines(QVector<uint32_t> _delay_lengths) {
+    for (int32_t i = 0; i < _delay_lengths.size(); i++) {
+        delay_lines.append(DelayLine(_delay_lengths[i]));
     }
-
-    // Initialize push counter
-    push_count = 0;
 }
 
 QVector<uint8_t> DelayLines::push(QVector<uint8_t> input_data) {
-    if (input_data.size() != delay_lengths.size()) {
-        qFatal("DelayLines::push(): Input data size of %d does not match the number of delays (%d).", input_data.size(), delay_lengths.size());
+    if (input_data.size() != delay_lines.size()) {
+        qFatal("Input data size does not match the number of delay lines.");
     }
 
-    QVector<uint8_t> output_data(delay_lengths.size(), 0);
-
-    for (int i = 0; i < delay_lengths.size(); ++i) {
-        delay_buffers[i].enqueue(input_data[i]);
-        if (delay_buffers[i].size() > delay_lengths[i]) {
-            output_data[i] = delay_buffers[i].dequeue();
-        } else {
-            output_data[i] = 0; // or some other default value
-        }
+    QVector<uint8_t> output_data;
+    for (int32_t i = 0; i < delay_lines.size(); i++) {
+        output_data.append(delay_lines[i].push(input_data[i]));
     }
 
-    push_count++; // Increment push counter
-
-    // If delay line isn't ready, return an empty vector
+    // Check if the delay lines are ready and, if not, return an empty vector
     if (!is_ready()) {
         return QVector<uint8_t>{};
     }
@@ -95,27 +54,57 @@ QVector<uint8_t> DelayLines::push(QVector<uint8_t> input_data) {
     return output_data;
 }
 
-// The delay line isn't ready until the number of pushes equals or exceeds the largest delay length plus one
-// This is because when the number of pushes is less, the output data is not generated just from the input data
-// but also from the default values in the delay buffer
-//
-// Return true if the number of pushes equals or exceeds the largest delay length plus one
 bool DelayLines::is_ready() {
-    return push_count >= max_delay + 1;
+    for (int32_t i = 0; i < delay_lines.size(); i++) {
+        if (!delay_lines[i].is_ready()) {
+            return false;
+        }
+    }
+    return true;
 }
 
-int32_t DelayLines::get_number_of_delays() {
-    return delay_lengths.size();
-}
-
-// Flush the delay lines so they are empty
 void DelayLines::flush() {
-    for (int i = 0; i < delay_lengths.size(); ++i) {
-        delay_buffers[i].clear();
+    for (int32_t i = 0; i < delay_lines.size(); i++) {
+        delay_lines[i].flush();
+    }
+}
+
+// DelayLine class implementation
+DelayLine::DelayLine(int32_t _delay_length) {
+    buffer = new uint8_t[_delay_length];
+    delay_length = _delay_length;
+    flush();
+}
+
+uint8_t DelayLine::push(uint8_t input_datum) {
+    if (delay_length == 0) {
+        return input_datum;
+    }
+
+    uint8_t output_datum = buffer[0];
+    std::copy(buffer + 1, buffer + delay_length, buffer);
+    buffer[delay_length - 1] = input_datum;
+
+    // Check if the delay line is ready
+    if (push_count >= delay_length) {
+        ready = true;
+    } else {
+        push_count++;
+    }
+
+    return output_datum;
+}
+
+bool DelayLine::is_ready() {
+    return ready;
+}
+
+void DelayLine::flush() {
+    if (delay_length > 0) {
+        std::fill(buffer, buffer + delay_length, 0);
+        ready = false;
+    } else {
+        ready = true;
     }
     push_count = 0;
-}
-
-QVector<QQueue<uint8_t>> DelayLines::get_delay_buffers() {
-    return delay_buffers;
 }

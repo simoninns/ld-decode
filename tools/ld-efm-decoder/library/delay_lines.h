@@ -26,24 +26,29 @@
 #define DELAY_LINES_H
 
 #include <QVector>
-#include <QQueue>
-#include <QMap>
-#include <cstdint>
+
+class DelayLine {
+    public:
+        DelayLine(int32_t _delay_length);
+        uint8_t push(uint8_t input_datum);
+        bool is_ready();
+        void flush();
+    private:
+        uint8_t* buffer;
+        bool ready;
+        int32_t push_count;
+        int32_t delay_length;
+};
 
 class DelayLines {
 public:
-    DelayLines(QVector<int> _delay_lengths);
+    DelayLines(QVector<uint32_t> _delay_lengths);
     QVector<uint8_t> push(QVector<uint8_t> input_data);
     bool is_ready();
-    int32_t get_number_of_delays();
     void flush();
-    QVector<QQueue<uint8_t>> get_delay_buffers(); // Add this line
 
 private:
-    QVector<int> delay_lengths;
-    QVector<QQueue<uint8_t>> delay_buffers;
-    int32_t max_delay;
-    int32_t push_count;
+    QVector<DelayLine> delay_lines;
 };
 
 #endif // DELAY_LINES_H
