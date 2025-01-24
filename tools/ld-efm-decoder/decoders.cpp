@@ -125,8 +125,8 @@ void ChannelToF3Frame::process_queue() {
         // Check if the internal buffer is long enough to process
         // "long enough" means 588 bits plus the 24 bits of the next frame's sync header
         if (internal_buffer.size() > 588+24) {
-            // Does the internal buffer contain a sync header?
-            if (internal_buffer.contains(sync_header)) {
+            // Does the internal buffer contain at least 2 sync headers?
+            if (internal_buffer.count(sync_header) >= 2) {
                 // Find the first sync header
                 int sync_header_index = internal_buffer.indexOf(sync_header);
 
@@ -175,6 +175,7 @@ void ChannelToF3Frame::process_queue() {
                         output_buffer.enqueue(f3_frame);
                     } else {
                         qDebug() << "next_sync_header_index: " << next_sync_header_index;
+                        qDebug() << "frame data: " << frame_data;
                         qFatal("ChannelToF3Frame::process_queue - Invalid frame size: %d", frame_data.size());
                         invalid_channel_frames_count++;
                     }
@@ -188,7 +189,7 @@ void ChannelToF3Frame::process_queue() {
                 }
             } else {
                 // No initial sync header found, throw away the data (apart from the last 24 bits)
-                qDebug() << "ChannelToF3Frame::process_queue - No initial sync header found, throwing away 24 bits of data";
+                qDebug() << "ChannelToF3Frame::process_queue - 2 sync headers not found... discarding 24 bytes of data";
                 internal_buffer = internal_buffer.right(24);
                 break;
             }

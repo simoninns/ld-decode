@@ -379,7 +379,7 @@ QString F3FrameToChannel::add_merging_bits(QString channel_frame) {
 
         // Order the patterns by the resulting DSV delta
         merging_patterns = order_patterns_by_dsv_delta(merging_patterns, current_efm, next_efm);
-        
+
         // Pick the first pattern from the list that doesn't form a spurious sync_header pattern
         QString merging_bits;
         for (const QString& pattern : merging_patterns) {
@@ -388,20 +388,21 @@ QString F3FrameToChannel::add_merging_bits(QString channel_frame) {
             // Add our possible pattern to the frame
             temp_frame.replace(start, 3, pattern);
 
-            // Remove the first and last 14 bits from the frame
-            // (this is the sync header and the last sync header)
-            temp_frame.remove(0, 14);
-            temp_frame.chop(14);
-
             // Any spurious sync headers generated?
-            if (temp_frame.count(sync_header) == 0) {
+            if (temp_frame.count(sync_header) == 2) {
                 merging_bits = pattern;
                 break;
             }
         }
 
+        // This shouldn't happen, but it it does, let's get debug information :)
         if (merging_bits.isEmpty()) {
-            qFatal("F3FrameToChannel::add_merging_bits(): No legal merging bit pattern found.");
+            qDebug() << "F3FrameToChannel::add_merging_bits(): No legal merging bit pattern found.";
+            qDebug() << "F3FrameToChannel::add_merging_bits(): Possible patterns:" << merging_patterns;
+            qDebug() << "F3FrameToChannel::add_merging_bits(): Merging bits start at:" << start;
+            qDebug() << "F3FrameToChannel::add_merging_bits():" << merged_frame.mid(start - 24, 24) << "xxx" << merged_frame.mid(start + 3, 24);
+
+            qFatal("F3FrameToChannel::add_merging_bits(): No legal merging bit pattern found - encode failed");
         }
 
         // Replace the "xxx" with the chosen merging bits
