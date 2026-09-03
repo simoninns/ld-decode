@@ -1,7 +1,7 @@
 # Standards references for weighted SNR
 
 Local copies of the sources behind the CCIR/ITU unified noise weighting
-implementation in `lddecode/metrics.py` (weighted SNR).
+implementation in `analysis/video_common.py` (weighted SNR).
 
 | File | What it is | Key content |
 |---|---|---|

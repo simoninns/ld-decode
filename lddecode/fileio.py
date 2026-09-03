@@ -69,7 +69,7 @@ def make_loader(filename, inputfreq=None):
 
         if filename.endswith(".s16") or filename.endswith(".raw"):
             input_args = ["-f", "s16le"]
-        elif filename.endswith(".r16") or filename.endswith(".u16") or filename.endswith(".tbc"):
+        elif filename.endswith(".r16") or filename.endswith(".u16"):
             input_args = ["-f", "u16le"]
         elif filename.endswith(".rf"):
             input_args = ["-f", "f32le"]

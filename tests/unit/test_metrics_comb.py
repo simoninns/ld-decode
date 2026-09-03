@@ -4,7 +4,7 @@ CombNTSC is not the decoder's chroma path -- ld-decode writes composite and
 leaves separation to ld-chroma-decoder -- but it is what the line 19 VITS
 colour-burst reading is measured through, and that reading drives the
 inverse-MTF auto-calibration.  So its behaviour has to be pinned even though
-none of it reaches the .tbc.
+none of it reaches the written output.
 
 Everything below is synthesised at 4x fSC, which is what the output sample
 rate is: one subcarrier cycle is exactly four samples, so chroma is a

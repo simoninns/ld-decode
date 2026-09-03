@@ -14,9 +14,10 @@ every read returned None).
 The end-to-end test decodes the .s16, .lds and .r30 conversions with
 ld-decode.  The capture is 10-bit clean, so all three files carry identical
 sample values (up to a constant gain/offset for .r30, which stores raw
-0..1023) and the decodes must be bit-identical: .tbc/.pcm/.efm for .lds vs
-.s16, and .tbc/.pcm for .r30 (whose 1/64 amplitude changes the EFM slice
-values but not the FM demod, which depends only on the signal's angle).
+0..1023) and the decodes must be bit-identical: video, audio and EFM for
+.lds vs .s16, and video and audio for .r30 (whose 1/64 amplitude changes
+the EFM slice values but not the FM demod, which depends only on the
+signal's angle).
 """
 
 import os
@@ -144,12 +145,17 @@ def _run_ld_decode(rf_path, out_base):
         [str(REPO_ROOT), env.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
     result = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "ld-decode"), "--tbc", str(rf_path), str(out_base)],
+        [sys.executable, str(REPO_ROOT / "ld-decode"), str(rf_path), str(out_base)],
         env=env,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, f"ld-decode failed on {rf_path}:\n{result.stderr}"
+
+
+# The decode's output files, keyed by the suffix that reaches them: the
+# analogue audio WAV has no extension separator in its name.
+OUTPUT_SUFFIXES = {"cvbs": ".cvbs", "efm": ".efm", "audio": "_audio_0.wav"}
 
 
 def test_decode_converted_formats_end_to_end(conversions, tmp_path):
@@ -158,20 +164,20 @@ def test_decode_converted_formats_end_to_end(conversions, tmp_path):
         out_base = tmp_path / f"dec-{ext}"
         _run_ld_decode(conversions[ext][0], out_base)
         outputs[ext] = {
-            k: (tmp_path / f"dec-{ext}.{k}").read_bytes()
-            for k in ("tbc", "pcm", "efm")
+            k: pathlib.Path(str(out_base) + suffix).read_bytes()
+            for k, suffix in OUTPUT_SUFFIXES.items()
         }
-        assert len(outputs[ext]["tbc"]) > 0, f".{ext} decode wrote no video"
+        assert len(outputs[ext]["cvbs"]) > 0, f".{ext} decode wrote no video"
 
     # .lds carries the identical 16-bit samples: everything matches .s16.
-    for k in ("tbc", "pcm", "efm"):
+    for k in OUTPUT_SUFFIXES:
         assert outputs["lds"][k] == outputs["s16"][k], \
-            f".lds decode .{k} differs from .s16 decode"
+            f".lds decode {k} differs from .s16 decode"
 
     # .r30 carries the same signal at 1/64 amplitude without the << 6: the
-    # FM video and audio demods depend only on the signal's angle, so
-    # .tbc/.pcm are still bit-identical (.efm slice values scale with the
-    # input, so the EFM stream legitimately differs).
-    for k in ("tbc", "pcm"):
+    # FM video and audio demods depend only on the signal's angle, so the
+    # video and audio are still bit-identical (.efm slice values scale
+    # with the input, so the EFM stream legitimately differs).
+    for k in ("cvbs", "audio"):
         assert outputs["r30"][k] == outputs["s16"][k], \
-            f".r30 decode .{k} differs from .s16 decode"
+            f".r30 decode {k} differs from .s16 decode"

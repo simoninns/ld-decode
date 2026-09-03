@@ -4,13 +4,11 @@ Split verbatim out of core.py.
 """
 
 import os
-import sqlite3
 import sys
 import time
 import traceback
 from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
-from textwrap import dedent
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -20,12 +18,12 @@ from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
 from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
-                    FieldPAL, chroma_dg_output_picture, field_output_view)
+                    FieldPAL, field_output_view)
 from .parallel import OrderedOutputLane
 from .fileio import ldf_pipe
 from .filters import inrange
-from .metrics import detect_levels
-from .dsp import FieldInfo, concatenate_blocks, nb_abs, nb_median, roundfloat
+from .metrics import black_to_white_rf_ratio, detect_levels
+from .dsp import FieldInfo, concatenate_blocks, nb_abs
 
 
 # 2T reference layouts: (bar, baseline, pulse) windows in us and the VITS
@@ -352,15 +350,6 @@ class LDdecode:
     # the per-system servo gain (mtf_speculation_tolerance) so it stays
     # the same size in pulse/bar ratio terms.
     MTF_SPECULATION_TOLERANCE = 0.10
-    # Likewise for the chroma DG (slope, phase) a field job corrected the
-    # TBC picture under, in dead-bands of the servo's own adoption
-    # thresholds (see dg_speculation_tolerance).
-    DG_SPECULATION_TOLERANCE = 2.0
-
-    # The .tbc.db runs with journalling off for speed; a synchronous=FULL
-    # commit is forced to disk every this many fields (~1000 frames) so a
-    # killed decode loses at most that tail rather than the whole database.
-    DB_SYNC_FIELDS = 2000
 
     # How many fields the output stage may trail the commit loop by
     # (OrderedOutputLane look-ahead) before the commit thread blocks.
@@ -441,9 +430,6 @@ class LDdecode:
         self.lastvalidfield = {False: None, True: None}
         self.lastFieldWritten = None
 
-        self.outfile_video = None
-        self.outfile_audio = None
-        self.outfile_efm = None
         self.outfile_pre_efm = None
         self.outfile_ac3sym = None
         self.ac3_demodulator = None
@@ -451,67 +437,36 @@ class LDdecode:
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
-        self.output_cvbs = extra_options.get("output_cvbs", False)
         self.cvbs_writer = None
 
-        # CVBS output uses the 24-bit SMPTE 272M audio profile; every other
-        # output path stays 16-bit (CD-matched .pcm / .wav).
-        self.audio_output_bits = 24 if self.output_cvbs else 16
-
-        # Confidence-packed .efm output: the T-value keeps the low nibble
-        # and a 4-bit doubt (0 = fully trusted) rides the high nibble.
-        # The CVBS EFM extension format defines every .efm byte this way,
-        # so CVBS output always packs (a fully trusted run packs to its
-        # plain T-value).  For TBC output the default is OFF so the plain
-        # .efm keeps working with legacy tools; --efm_conf on/off
-        # overrides, LDDECODE_EFM_EMITCONF=1/0 is the env equivalent.
-        _conf_mode = extra_options.get("efm_conf", "auto")
-        _conf_env = os.environ.get("LDDECODE_EFM_EMITCONF", "")
-        if _conf_env == "1":
-            _conf_mode = "on"
-        elif _conf_env == "0":
-            _conf_mode = "off"
-        if self.output_cvbs:
-            if _conf_mode == "off":
-                _logger.warning(
-                    "CVBS .efm output always carries confidence "
-                    "(the EFM extension format defines the byte layout); "
-                    "ignoring --efm_conf off"
-                )
-            self.efm_conf_packed = True
-        else:
-            self.efm_conf_packed = _conf_mode == "on"
+        # The CVBS spec mandates SMPTE 272M audio: 48 kHz, 24-bit,
+        # synchronous to video.
+        self.audio_output_bits = 24
 
         if fname_out is not None:
-            if self.output_cvbs:
-                from .cvbs import CVBSWriter
+            from .cvbs import CVBSWriter
 
-                # The CVBS spec mandates SMPTE 272M audio: 48 kHz, 24-bit,
-                # synchronous to video.  Force the analog audio output rate
-                # to 48 kHz for CVBS regardless of --analog_audio_frequency
-                # / --ntsc_audio_rate; the writer handles the 24-bit
-                # container and the exact per-frame sample counts.
-                if self.analog_audio:
-                    self.analog_audio = CVBSWriter.AUDIO_RATE
+            # Force the analog audio output rate to 48 kHz regardless of
+            # --analog_audio_frequency / --ntsc_audio_rate; the writer
+            # handles the 24-bit container and the exact per-frame sample
+            # counts.
+            if self.analog_audio:
+                self.analog_audio = CVBSWriter.AUDIO_RATE
 
-                self.cvbs_writer = CVBSWriter(
-                    fname_out, system, logger=_logger, version=self.version,
-                    black_level=extra_options.get("cvbs_black_level"),
-                    write_audio=bool(self.analog_audio),
-                    capture_notes=(
-                        "LaserDisc PAL: pilot burst may be present in blanking"
-                        if system == "PAL" else None),
-                    has_nonstandard_values=True if system == "PAL" else None,
-                    write_efm=bool(self.digital_audio),
-                    sample_encoding=extra_options.get("cvbs_encoding"),
-                )
-            else:
-                self.outfile_video = open(fname_out + ".tbc", "wb")
-                if self.analog_audio:
-                    self.outfile_audio = open(fname_out + ".pcm", "wb")
+            self.cvbs_writer = CVBSWriter(
+                fname_out, system, logger=_logger, version=self.version,
+                black_level=extra_options.get("cvbs_black_level"),
+                write_audio=bool(self.analog_audio),
+                capture_notes=(
+                    "LaserDisc PAL: pilot burst may be present in blanking"
+                    if system == "PAL" else None),
+                has_nonstandard_values=True if system == "PAL" else None,
+                write_efm=bool(self.digital_audio),
+                sample_encoding=extra_options.get("cvbs_encoding"),
+            )
             if self.digital_audio:
-                # feed EFM stream into ld-ldstoefm; in CVBS mode the writer
-                # owns <out>.efm (frame-indexed EFM extension format)
+                # feed the EFM stream to the CVBS writer, which owns
+                # <out>.efm (frame-indexed EFM extension format)
                 if extra_options.get("efm_demod", "timing") == "timing":
                     # Symbol-rate timing-recovery demodulator (the default):
                     # decimation + M&M timing loop + bit-domain frame sync.
@@ -549,32 +504,11 @@ class LDdecode:
                         _v = os.environ.get(_ev, "")
                         if _v:
                             setattr(self.efm_pll, _at, _ty(float(_v)))
-                if not self.output_cvbs:
-                    self.outfile_efm = open(fname_out + ".efm", "wb")
                 if extra_options.get("write_pre_efm", False):
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
                 self.do_rftbc = True
-
-            if self.output_cvbs:
-                # CVBS mode replaces the .tbc video output and its sqlite
-                # metadata; the spec .meta file is written by CVBSWriter.
-                self.dbconn = None
-            else:
-                # Remove any previous database *and* its WAL/shm siblings:
-                # a stale WAL from an interrupted run paired with a fresh
-                # database makes sqlite fail with "disk I/O error".
-                for ext in ('.tbc.db', '.tbc.db-wal', '.tbc.db-shm'):
-                    if os.path.exists(fname_out + ext):
-                        os.unlink(fname_out + ext)
-                # The rows are written by the output stage, which runs
-                # on its own thread with -t N; the main thread only
-                # touches the connection at open and after close() has
-                # drained that stage.
-                self.dbconn = sqlite3.connect(fname_out + '.tbc.db',
-                                              check_same_thread=False)
-                self.create_db_schema()
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
         if self.pipe_rftbc:
@@ -583,8 +517,6 @@ class LDdecode:
         self.fname_out = fname_out
 
         self.firstfield = None  # In frame output mode, the first field goes here
-        self.capture_id = None
-
         self.system = system
 
         self.rf_opts = {
@@ -631,9 +563,7 @@ class LDdecode:
 
         self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
 
-        self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams["FPS"])
         self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
-        self.outwidth = self.rf.SysParams["outlinelen"]
 
         self.fdoffset = 0
         self.mtf_level = 1
@@ -801,21 +731,9 @@ class LDdecode:
         # discards everything decoded under the old values, keeping the
         # output bit-exact with -t 1 across adoptions.
         self.exact_speculation = extra_options.get("exact_speculation", False)
-        # The same allowance for the chroma DG correction a field job
-        # applied: a servo trim within DG_SPECULATION_TOLERANCE dead-bands
-        # of the current estimate keeps the worker's correction (the
-        # chroma-gain difference is ~1.5% at 100 IRE per slope dead-band);
-        # anything larger - the phase term engaging, say - is redone
-        # from the raw picture at write time.  Exact mode redoes all.
-        self.dg_speculation_tolerance = (
-            None if self.exact_speculation else (
-                self.DG_SPECULATION_TOLERANCE * self.DG_SLOPE_DEADBAND,
-                self.DG_SPECULATION_TOLERANCE * self.DG_PHASE_DEADBAND,
-            )
-        )
 
         # The field pipeline: stage 1 (sync/lineloc chain) runs on the
-        # main thread; stage 2 (downscale/metrics/dropouts) fans out per
+        # main thread; stage 2 (downscale/measure/dropouts) fans out per
         # field; commits happen strictly in chain order.  Depth 1 is
         # plain serial decode.
         self._pipeline = deque()
@@ -830,22 +748,15 @@ class LDdecode:
                 thread_name_prefix="stage2",
             )
 
-        # The output stage - EFM demodulation, the .tbc.db row, CVBS
-        # frame assembly and the file writes - trails the commit loop on
-        # its own thread (see writeout), and a stale field's chroma DG
-        # re-correction is fanned out to a small pool ahead of it.
-        # Single-threaded decodes keep it inline: that is the reference
-        # the threaded outputs are compared against.
+        # The output stage - EFM demodulation, CVBS frame assembly and
+        # the file writes - trails the commit loop on its own thread
+        # (see writeout).  Single-threaded decodes keep it inline: that
+        # is the reference the threaded outputs are compared against.
         self._output_lane = None
-        self._output_pool = None
         if self.numthreads > 1:
             self._output_lane = OrderedOutputLane(
                 depth=self.OUTPUT_LANE_DEPTH)
-            self._output_pool = ThreadPoolExecutor(
-                max_workers=2, thread_name_prefix="output")
             sys.setswitchinterval(self.THREAD_SWITCH_INTERVAL)
-
-        self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
 
@@ -876,33 +787,12 @@ class LDdecode:
     def _finish_output(self):
         """Let the output stage catch up with the commit loop and stop
         it.  A failure it has not yet surfaced (a full disk on the last
-        field, say) is raised here, after its pool is released."""
+        field, say) is raised here."""
         lane, self._output_lane = self._output_lane, None
-        pool, self._output_pool = self._output_pool, None
-        try:
-            if lane is not None:
-                lane.close()
-        finally:
-            if pool is not None:
-                pool.shutdown(wait=False)
+        if lane is not None:
+            lane.close()
 
     def _close_outputs(self):
-        # Drain any T-values the EFM demodulator still holds: the timing
-        # demodulator buffers up to one frame awaiting its closing sync, and
-        # the stream's final frame can never be validated, so it flushes
-        # here with low confidence.  (The PLL has no flush; it only ever
-        # holds one open run.)  The tail lands after the last field's
-        # efmTValues count - it belongs to no field.
-        efm_demod_obj = getattr(self, "efm_pll", None)
-        if self.outfile_efm is not None and hasattr(efm_demod_obj, "flush"):
-            efm_tail = efm_demod_obj.flush()
-            if len(efm_tail):
-                if self.efm_conf_packed:
-                    efm_tail = efm_score.pack_t_conf(
-                        efm_tail, efm_demod_obj.conf_view()
-                    )
-                self.outfile_efm.write(efm_tail.tobytes())
-
         if self._job_engine is not None:
             self._job_engine.stop()
             self._job_engine = None
@@ -932,9 +822,6 @@ class LDdecode:
         # use setattr to force file closure by unlinking the objects
         for outfiles in [
             "infile",
-            "outfile_video",
-            "outfile_audio",
-            "outfile_efm",
             "outfile_pre_efm",
             "outfile_rftbc",
             "outfile_ac3sym",
@@ -943,191 +830,12 @@ class LDdecode:
 
         self._close_reader()
 
-        # Refresh capture-level metadata with the final calibration values
-        # (AGC may have adjusted levels after the first field) and commit.
-        if hasattr(self, 'dbconn') and self.dbconn is not None:
-            try:
-                # Final durable flush: close any open transaction, then
-                # raise durability to FULL so build_sqlite_metadata's commit
-                # fsyncs the completed database to disk (journalling is off,
-                # so there is no WAL to fold back).  Committing first also
-                # avoids changing the safety level mid-transaction.
-                self.dbconn.commit()
-                self.dbconn.execute("PRAGMA synchronous=FULL")
-                self.build_sqlite_metadata()
-            except Exception:
-                pass
-
         if self.use_profiler:
             self.lpf.print_stats()
 
         self.print_stats()
 
-    def update_sqlite_field_count(self, n_fields=None):
-        if n_fields is None:
-            n_fields = len(self.fieldinfo)
-        if self.capture_id:
-            self.dbconn.execute(
-                "UPDATE capture SET number_of_sequential_fields = ? WHERE capture_id = ?",
-                (n_fields, self.capture_id),
-            )
-
-    def create_db_schema(self):
-        cur = self.dbconn.cursor()
-
-        # Journalling off + synchronous off for the fastest bulk writes.
-        # Durability is coarse-grained instead of per-field: a
-        # synchronous=FULL commit fsyncs the database every DB_SYNC_FIELDS
-        # fields (see writeout_field_to_db) and once more at close().  A
-        # decode killed between syncs loses the tail; with no journal to
-        # roll back, a crash mid-write can corrupt the .tbc.db - it is
-        # rebuilt by re-running the decode.
-        cur.execute("PRAGMA journal_mode=OFF")
-        cur.execute("PRAGMA synchronous=OFF")
-        cur.execute("PRAGMA temp_store=MEMORY")
-
-        cur.executescript(dedent('''\
-            PRAGMA user_version = 1;
-
-            CREATE TABLE capture (
-                capture_id INTEGER PRIMARY KEY,
-                system TEXT NOT NULL CHECK (system IN ('NTSC','PAL','PAL_M')),
-                decoder TEXT NOT NULL CHECK (decoder IN ('ld-decode','vhs-decode')),
-                git_branch TEXT,
-                git_commit TEXT,
-                video_sample_rate REAL,
-                active_video_start INTEGER,
-                active_video_end INTEGER,
-                field_width INTEGER,
-                field_height INTEGER,
-                number_of_sequential_fields INTEGER,
-                colour_burst_start INTEGER,
-                colour_burst_end INTEGER,
-                is_mapped INTEGER CHECK (is_mapped IN (0,1)),
-                is_subcarrier_locked INTEGER CHECK (is_subcarrier_locked IN (0,1)),
-                is_widescreen INTEGER CHECK (is_widescreen IN (0,1)),
-                white_16b_ire INTEGER,
-                black_16b_ire INTEGER,
-                blanking_16b_ire INTEGER,
-                capture_notes TEXT
-            );
-
-            CREATE TABLE pcm_audio_parameters (
-                capture_id INTEGER PRIMARY KEY REFERENCES capture(capture_id) ON DELETE CASCADE,
-                bits INTEGER,
-                is_signed INTEGER CHECK (is_signed IN (0,1)),
-                is_little_endian INTEGER CHECK (is_little_endian IN (0,1)),
-                sample_rate REAL
-            );
-
-            CREATE TABLE field_record (
-                capture_id INTEGER NOT NULL REFERENCES capture(capture_id) ON DELETE CASCADE,
-                field_id INTEGER NOT NULL,
-                audio_samples INTEGER,
-                decode_faults INTEGER,
-                disk_loc REAL,
-                efm_t_values INTEGER,
-                field_phase_id INTEGER,
-                file_loc INTEGER,
-                is_first_field INTEGER CHECK (is_first_field IN (0,1)),
-                median_burst_ire REAL,
-                pad INTEGER CHECK (pad IN (0,1)),
-                sync_conf INTEGER,
-                ntsc_is_fm_code_data_valid INTEGER CHECK (ntsc_is_fm_code_data_valid IN (0,1)),
-                ntsc_fm_code_data INTEGER,
-                ntsc_field_flag INTEGER CHECK (ntsc_field_flag IN (0,1)),
-                ntsc_is_video_id_data_valid INTEGER CHECK (ntsc_is_video_id_data_valid IN (0,1)),
-                ntsc_video_id_data INTEGER,
-                ntsc_white_flag INTEGER CHECK (ntsc_white_flag IN (0,1)),
-                ac3_symbols INTEGER,
-                PRIMARY KEY (capture_id, field_id)
-            );
-
-            CREATE TABLE vits_metrics (
-                capture_id INTEGER NOT NULL,
-                field_id INTEGER NOT NULL,
-                b_psnr REAL,
-                w_snr REAL,
-                b_psnr_weighted REAL,
-                w_snr_weighted REAL,
-                ntsc_line19_burst70_ire REAL,
-                ntsc_line19_color_3d_raw_snr REAL,
-                ntsc_line19_burst0_ire REAL,
-                FOREIGN KEY (capture_id, field_id)
-                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
-                PRIMARY KEY (capture_id, field_id)
-            );
-
-            CREATE TABLE vbi (
-                capture_id INTEGER NOT NULL,
-                field_id INTEGER NOT NULL,
-                vbi0 INTEGER NOT NULL,
-                vbi1 INTEGER NOT NULL,
-                vbi2 INTEGER NOT NULL,
-                FOREIGN KEY (capture_id, field_id)
-                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
-                PRIMARY KEY (capture_id, field_id)
-            );
-
-            CREATE TABLE drop_outs (
-                capture_id INTEGER NOT NULL,
-                field_id INTEGER NOT NULL,
-                field_line INTEGER NOT NULL,
-                startx INTEGER NOT NULL,
-                endx INTEGER NOT NULL,
-                FOREIGN KEY (capture_id, field_id)
-                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
-                PRIMARY KEY (capture_id, field_id, field_line, startx, endx)
-            );
-
-            CREATE TABLE vitc (
-                capture_id INTEGER NOT NULL,
-                field_id INTEGER NOT NULL,
-                vitc0 INTEGER NOT NULL,
-                vitc1 INTEGER NOT NULL,
-                vitc2 INTEGER NOT NULL,
-                vitc3 INTEGER NOT NULL,
-                vitc4 INTEGER NOT NULL,
-                vitc5 INTEGER NOT NULL,
-                vitc6 INTEGER NOT NULL,
-                vitc7 INTEGER NOT NULL,
-                FOREIGN KEY (capture_id, field_id)
-                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
-                PRIMARY KEY (capture_id, field_id)
-            );
-
-            CREATE TABLE closed_caption (
-                capture_id INTEGER NOT NULL,
-                field_id INTEGER NOT NULL,
-                data0 INTEGER,
-                data1 INTEGER,
-                FOREIGN KEY (capture_id, field_id)
-                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
-                PRIMARY KEY (capture_id, field_id)
-            );
-
-            -- Speculative-decode diagnostics (-t N field jobs): one row per
-            -- rejected speculation or engine resync, with the cause.
-            -- field_id is the field the decoder was about to commit (the
-            -- rejected field was then re-decoded inline, so its
-            -- field_record row comes from the inline decode).  No FK to
-            -- field_record: the row is written before the field commits.
-            CREATE TABLE speculation_log (
-                capture_id INTEGER NOT NULL,
-                field_id INTEGER NOT NULL,
-                file_loc INTEGER NOT NULL,
-                reason TEXT NOT NULL,
-                detail TEXT
-            );
-        '''))
-
-        self.dbconn.commit()
-
-        cur.close()
-
     def roughseek(self, location, isField=True):
-        self.prevPhaseID = None
-
         self.fdoffset = location
         if isField:
             self.fdoffset *= self.bytes_per_field
@@ -1500,17 +1208,15 @@ class LDdecode:
 
         Pools per-field slope and phase estimates and adopts the pooled
         medians into DecoderParams["chroma_dg_slope"] and
-        ["chroma_dg_phase"], which the write-time corrector nulls on
-        both outputs (downscale_cvbs for CVBS,
-        apply_chroma_dg_correction_output for the TBC).  Nothing about
-        decoding depends on them - the servos all measure upstream of
-        the correction - so adopting never invalidates a field, and
-        there is nothing to hand to workers; serial and threaded decodes
-        pool the same committed fields at the same points and so adopt
-        identically.
+        ["chroma_dg_phase"], which the write-time corrector nulls on the
+        CVBS output (downscale_cvbs).  Nothing about decoding depends on
+        them - the servos all measure upstream of the correction - so
+        adopting never invalidates a field, and there is nothing to hand
+        to workers; serial and threaded decodes pool the same committed
+        fields at the same points and so adopt identically.
 
-        Discs with no modulated staircase never feed the pool and both
-        corrections stay 0.0: a capture with no measured differential
+        Discs with no modulated staircase never feed the pool and the
+        correction stays 0.0: a capture with no measured differential
         distortion gets no correction, by construction.
         """
         if not self.chroma_dg_servo:
@@ -1582,9 +1288,6 @@ class LDdecode:
         self.dg_calibrated = True
         self.rf.DecoderParams["chroma_dg_slope"] = estimate
         self.rf.DecoderParams["chroma_dg_phase"] = phase
-        engine = getattr(self, "_job_engine", None)
-        if engine is not None:
-            engine.set_chroma_dg(self._engine_chroma_dg())
 
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
@@ -1609,7 +1312,7 @@ class LDdecode:
         # in-flight fields commit under the old strength (a dead-band
         # sized trim), but exact mode must redo and flush for it, or the
         # fields decoded ahead would commit under a filter the serial
-        # decode had already left behind (compare-*-parallel-tbc).  Only
+        # decode had already left behind (compare-*-parallel-cvbs).  Only
         # once fields are being written, though: the warm-up has nothing
         # in flight, and its ceiling behaviour - cap now, let the burst
         # tracker see the capped value on the next field - is the same
@@ -1662,7 +1365,7 @@ class LDdecode:
         the same fields but a different number of them in hand at the
         moment the burst servo happens to ask, and sampling it live made
         the adopted strength differ between the two, which broke
-        bit-identity (compare-pal-parallel-tbc).
+        bit-identity (compare-pal-parallel-cvbs).
 
         It was therefore published only at a video EQ adoption, which the
         dead-band and rate limit had already made reproducible.  That
@@ -1783,7 +1486,7 @@ class LDdecode:
         dead-band and rate limit, so the sequence of setpoints is the
         same whether fields arrive serially or from the job engine.
         Reading a pool median here instead is what broke
-        compare-pal-parallel-tbc when the inverse-MTF ceiling was first
+        compare-pal-parallel-cvbs when the inverse-MTF ceiling was first
         written; see _imtf_flat_band.
         """
         params = getattr(self.rf, "DecoderParams", {})
@@ -2118,7 +1821,7 @@ class LDdecode:
 
     def _process_efm(self, efm):
         """Run one field's EFM slice through the selected demodulator
-        (EFM_PLL, or EFMTimingDemod with --efm_demod timing) and write it out.
+        (EFM_PLL, or EFMTimingDemod with --efm_demod timing).
 
         The demodulator is stateful over the concatenated stream, so this must be
         fed strictly in field write order - it is the one per-field
@@ -2129,15 +1832,12 @@ class LDdecode:
             self.outfile_pre_efm.write(efm.tobytes())
 
         efm_out = self.efm_pll.process(efm)
-        if self.efm_conf_packed:
-            # Fold the demodulator's per-T confidence (conf_view is 1:1
-            # with the T-values on both demodulators) into the high
-            # nibble of each .efm byte as doubt.
-            efm_out = efm_score.pack_t_conf(efm_out, self.efm_pll.conf_view())
-        if self.outfile_efm is not None:
-            self.outfile_efm.write(efm_out.tobytes())
-
-        return efm_out
+        # Fold the demodulator's per-T confidence (conf_view is 1:1 with
+        # the T-values on both demodulators) into the high nibble of each
+        # .efm byte as doubt.  The EFM extension format defines every
+        # byte that way, so the CVBS writer's stream always carries it (a
+        # fully trusted run packs to its plain T-value).
+        return efm_score.pack_t_conf(efm_out, self.efm_pll.conf_view())
 
     def writeout(self, dataset):
         """Commit-time half of the output stage.
@@ -2154,22 +1854,13 @@ class LDdecode:
         which is what the inline write would have read."""
         f, fi, picture, audio, efm = dataset
 
-        fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
-        # efmTValues and ac3Symbols are filled in by _write_field
-        fi["efmTValues"] = 0
-        fi["ac3Symbols"] = 0
         self.fieldinfo.append(fi)
-
-        field_id = self.fields_written
         self.fields_written += 1
 
         view = field_output_view(f)
-        if self.cvbs_writer is None:
-            picture = self._output_picture(picture, view)
-        else:
-            self._pair_cvbs_view(view)
+        self._pair_cvbs_view(view)
 
-        job = (view, fi, picture, audio, efm, field_id, len(self.fieldinfo))
+        job = (view, fi, picture, audio, efm)
         if self._output_lane is not None:
             self._output_lane.submit(self._write_field, job)
         else:
@@ -2197,154 +1888,31 @@ class LDdecode:
             first.rf = view.rf
             self._cvbs_first_view = None
 
-    def _output_picture(self, picture, view):
-        """The TBC picture to write for a field under the commit-time
-        chroma DG estimate (see chroma_dg_output_picture).
-
-        A field job has usually applied the correction already, and the
-        estimate it used is kept while it is current; a field that
-        needs it redone (an adoption since it was dispatched) gets the
-        three whole-field FFTs on the output pool instead, so a burst
-        of stale in-flight fields after an adoption is corrected
-        concurrently, off the commit thread.  Returns the picture, or a
-        Future of it that _write_field resolves in order."""
-        dp = view.rf.DecoderParams
-        args = (picture, view,
-                float(dp.get("chroma_dg_slope", 0.0)),
-                float(dp.get("chroma_dg_phase", 0.0)),
-                self.dg_speculation_tolerance)
-        if self._output_pool is not None:
-            return self._output_pool.submit(chroma_dg_output_picture, *args)
-        return chroma_dg_output_picture(*args)
-
     def _write_field(self, job):
-        """Output-stage half of writeout: the EFM and AC3 demodulation,
-        the metadata database row and the sample-data writes for one
-        committed field, in commit order.  Runs on the output lane
-        (with -t N) or inline; either way the demodulators, the
-        database connection and the output files are touched by this
+        """Output-stage half of writeout: the EFM and AC3 demodulation
+        and the sample-data writes for one committed field, in commit
+        order.  Runs on the output lane (with -t N) or inline; either
+        way the demodulators and the output files are touched by this
         stage alone."""
-        f, fi, picture, audio, efm, field_id, n_fields = job
-        if isinstance(picture, Future):
-            picture = picture.result()
+        f, fi, picture, audio, efm = job
 
         efm_out = None
         if self.digital_audio is True:
             efm_out = self._process_efm(efm)
-        fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
-        # Per-field symbol count, analogous to efmTValues
         if self.outfile_ac3sym is not None:
-            fi["ac3Symbols"] = self.AC3demodulate(f)
-
-        if self.dbconn is not None:
-            self._write_field_db(fi, field_id, n_fields)
+            self.AC3demodulate(f)
 
         self._writeout_data(fi, picture, audio, f, efm_out)
 
-    def _write_field_db(self, fi, f_id, n_fields):
-        """Insert one field's rows into the .tbc.db."""
-        if not self.capture_id:
-            self.build_sqlite_metadata()
-
-        c_id = self.capture_id
-
-        # On a ~1000-frame boundary, raise durability to FULL *before* this
-        # field's inserts open a transaction: the safety level cannot be
-        # changed mid-transaction, and setting it now makes the field's
-        # commit fsync everything written since the last sync (an fsync
-        # flushes the whole file).  Restored to OFF after that commit.
-        sync_now = (f_id + 1) % self.DB_SYNC_FIELDS == 0
-        if sync_now:
-            # A speculation_log insert (or any other stray write) may
-            # have auto-opened a transaction since the last commit;
-            # close it first or the PRAGMA throws ("Safety level may
-            # not be changed inside a transaction") and kills the
-            # decode at the boundary field.
-            if self.dbconn.in_transaction:
-                self.dbconn.commit()
-            self.dbconn.execute("PRAGMA synchronous=FULL")
-
-        decodeFaults = None if fi.get('decodeFaults') == 0 else fi.get('decodeFaults')
-
-        # Insert parent record into 'field_record'
-        # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
-        self.dbconn.execute('''
-            INSERT INTO field_record (
-                capture_id, field_id, is_first_field, sync_conf, disk_loc,
-                file_loc, median_burst_ire, field_phase_id, decode_faults,
-                audio_samples, efm_t_values, ac3_symbols, pad
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'],
-                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults,
-                fi['audioSamples'], fi['efmTValues'], fi['ac3Symbols'], 0))
-
-        if vitsMetrics := fi.get('vitsMetrics'):
-            w_snr  = vitsMetrics.get('wSNR', 0)
-            b_psnr = vitsMetrics.get('bPSNR', 0)
-            w_snr_w  = vitsMetrics.get('wSNRw')
-            b_psnr_w = vitsMetrics.get('bPSNRw')
-            burst70 = vitsMetrics.get('ntscLine19Burst70IRE')
-            snr3d   = vitsMetrics.get('ntscLine19Color3DRawSNR')
-            burst0  = vitsMetrics.get('ntscLine19Burst0IRE')
-
-            self.dbconn.execute('''
-                INSERT INTO vits_metrics (
-                    capture_id, field_id, w_snr, b_psnr,
-                    w_snr_weighted, b_psnr_weighted,
-                    ntsc_line19_burst70_ire, ntsc_line19_color_3d_raw_snr,
-                    ntsc_line19_burst0_ire
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (c_id, f_id, w_snr, b_psnr, w_snr_w, b_psnr_w,
-                 burst70, snr3d, burst0))
-
-        # Insert VBI data if present
-        vbi_data = fi.get("vbi", {}).get("vbiData", [])
-        if vbi_data:
-            vbi_row = (vbi_data + [0, 0, 0])[:3]
-            self.dbconn.execute(
-                "INSERT INTO vbi (capture_id, field_id, vbi0, vbi1, vbi2) VALUES (?, ?, ?, ?, ?)",
-                (c_id, f_id, *vbi_row),
-            )
-
-        # Insert dropouts (if any) into 'drop_outs'
-        if self.doDOD and fi.get("dropOuts"):
-            dropout_lines = fi["dropOuts"]["fieldLine"]
-            dropout_starts = fi["dropOuts"]["startx"]
-            dropout_ends = fi["dropOuts"]["endx"]
-
-            # Use executemany for cleaner/faster insertion of multiple rows
-            dropout_data = [
-                (c_id, f_id, line, start, end)
-                for line, start, end in zip(dropout_lines, dropout_starts, dropout_ends)
-            ]
-
-            self.dbconn.executemany('''
-                INSERT INTO drop_outs (
-                    capture_id, field_id, field_line, startx, endx
-                ) VALUES (?, ?, ?, ?, ?)''',
-                dropout_data)
-
-        self.update_sqlite_field_count(n_fields)
-
-        # Commit per field so the DB stays consistent in the page cache.
-        # With journalling off this reaches disk only on the boundary
-        # commits primed above (synchronous=FULL); restore OFF afterwards.
-        self.dbconn.commit()
-        if sync_now:
-            self.dbconn.execute("PRAGMA synchronous=OFF")
-
     def _writeout_data(self, fi, picture, audio, f, efm_out=None):
-        """Write the field's sample data (video/rf-tbc/audio outputs).
+        """Write the field's sample data (video/rf-tbc outputs).
 
-        The TBC picture arrives with its chroma DG correction already
-        decided (_output_picture); the CVBS writer applies its own on
-        the 4fsc lattice."""
+        The CVBS writer owns the video, audio and EFM files; it applies
+        the chroma DG correction itself, on the 4fsc lattice."""
         if self.cvbs_writer is not None:
             self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
                                         audio=audio)
-        else:
-            self.outfile_video.write(picture)
 
         if self.do_rftbc:
             rftbc = f.rf_tbc()
@@ -2354,10 +1922,6 @@ class LDdecode:
 
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)
-
-        if audio is not None and self.cvbs_writer is None \
-                and self.outfile_audio is not None:
-            self.outfile_audio.write(audio)
 
     @profile
     def _read_raw_block(self, b):
@@ -2637,17 +2201,17 @@ class LDdecode:
 
     @profile
     def decode_stage2(self, f):
-        """Per-field work with no chain dependency: video downscale,
-        per-field metrics and dropout detection.  Reads calibration
-        parameters and the field only, so it can run on a worker thread
-        for several fields at once.  Returns (picture, efm, metrics)."""
+        """Per-field work with no chain dependency: video downscale, the
+        MTF servo's RF-envelope ratio and dropout detection.  Reads
+        calibration parameters and the field only, so it can run on a
+        worker thread for several fields at once.  Returns
+        (picture, efm, bw_ratio)."""
         picture, _, efm = f.downscale(
             linesout=self.output_lines,
             final=True,
         )
 
-        metrics = self.computeMetrics(f, None, verbose=True)
-        f.precomputed_metrics = metrics
+        bw_ratio = black_to_white_rf_ratio(self.rf, f)
 
         if self.doDOD:
             f.precomputed_dropouts = f.dropout_detect()
@@ -2658,7 +2222,7 @@ class LDdecode:
             # arrives via a redo, which re-runs stage 2.
             f.precomputed_levels = self.detectLevels(f)
 
-        return picture, efm, metrics
+        return picture, efm, bw_ratio
 
     def _calibration_warmup(self, entry):
         """Settle AGC, MTF and the auto-deemp strength before the first
@@ -2713,9 +2277,9 @@ class LDdecode:
             if not nf.valid:
                 continue
 
-            _, _, m = self.decode_stage2(nf)
-            if m and "blackToWhiteRFRatio" in m:
-                self.bw_ratios.append(m["blackToWhiteRFRatio"])
+            _, _, ratio = self.decode_stage2(nf)
+            if ratio is not None:
+                self.bw_ratios.append(ratio)
                 self.bw_ratios = self.bw_ratios[-keep:]
 
             moved = not self.checkMTF(nf, prev)
@@ -2768,18 +2332,19 @@ class LDdecode:
         return (agc_moved or deemp_moved or self.mtf_level != mtf0
                 or self.rf.DecoderParams.get("video_eq_auto") != veq0)
 
-    def calibrate(self, f, metrics, redos):
+    def calibrate(self, f, bw_ratio, redos):
         """Fold one decoded field's measurements into the calibration
         state (AGC levels, MTF ratio pool, auto-deemp burst pool).
 
-        Returns True when parameters changed enough that the field
-        should be re-decoded; `redos` counts how many times this field
-        has already been re-decoded (measurement pools are only fed on
-        the first pass).
+        `bw_ratio` is the field's black-to-white RF envelope ratio, or
+        None when it carries no white VITS reference.  Returns True when
+        parameters changed enough that the field should be re-decoded;
+        `redos` counts how many times this field has already been
+        re-decoded (measurement pools are only fed on the first pass).
         """
-        if "blackToWhiteRFRatio" in metrics and redos == 0:
+        if bw_ratio is not None and redos == 0:
             keep = 900 if self.isCLV else 30
-            self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
+            self.bw_ratios.append(bw_ratio)
             self.bw_ratios = self.bw_ratios[-keep:]
 
         # AGC first: it rewrites ire0/hz_ire, which the burst-based deemp
@@ -2997,7 +2562,7 @@ class LDdecode:
         """Calibrate one chain entry (with a bounded redo budget) and
         commit it in order."""
         f = entry["f"]
-        picture, efm, metrics = entry["result"]
+        picture, efm, bw_ratio = entry["result"]
 
         # Settle all calibration loops before anything is written, so
         # the first frame carries the same parameters as the rest.
@@ -3011,7 +2576,7 @@ class LDdecode:
         # one-shot, so this converges).
         redos = 0
         while True:
-            redo = force_redo or self.calibrate(f, metrics, redos)
+            redo = force_redo or self.calibrate(f, bw_ratio, redos)
             force_redo = False
             if redos >= 2 or not redo:
                 break
@@ -3058,8 +2623,8 @@ class LDdecode:
             self._chain_prev = f
             self.fdoffset = entry["start"] + offset
 
-            picture, efm, metrics = self.decode_stage2(f)
-            entry["result"] = (picture, efm, metrics)
+            picture, efm, bw_ratio = self.decode_stage2(f)
+            entry["result"] = (picture, efm, bw_ratio)
 
         fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
         fieldlength /= f.inlinelen
@@ -3162,7 +2727,7 @@ class LDdecode:
             "analog_audio": self.analog_audio,
             "audio_bits": self.audio_output_bits,
             # the PAL CVBS writer resamples from the demod at write time
-            "keep_demod": self.output_cvbs and self.system == "PAL",
+            "keep_demod": self.system == "PAL",
         }
 
     def _field_engine_cfg(self):
@@ -3193,52 +2758,18 @@ class LDdecode:
             imtf_strength=self.rf.DecoderParams.get(
                 "inverse_mtf_strength", 0.0),
             veq=self.rf.DecoderParams.get("video_eq_auto"),
-            chroma_dg=self._engine_chroma_dg(),
         )
         self._engine_dirty = False
         self._job_rejects = 0
 
-    def _engine_chroma_dg(self):
-        """The chroma DG (slope, phase) field jobs should correct the TBC
-        picture under - None for CVBS output, whose writer applies the
-        correction itself on the 4fsc lattice."""
-        if self.output_cvbs:
-            return None
-        return (
-            float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0)),
-            float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0)),
-        )
-
     def _log_speculation(self, reason, detail=""):
-        """Record a speculation reject (or engine resync) with its cause:
-        a DEBUG line in the decode log and a row in speculation_log in
-        the .tbc.db, keyed to the field about to be committed."""
+        """Record a speculation reject (or engine resync) with its cause
+        as a DEBUG line in the decode log."""
         logs.logger.debug(
             "speculation %s at field %d (loc %d)%s",
             reason, self.fields_written, int(self.fdoffset),
             f": {detail}" if detail else "",
         )
-
-        if self.dbconn is not None:
-            # The database belongs to the output stage: the row is
-            # written from there, in sequence with the field rows.
-            row = (self.fields_written, int(self.fdoffset), reason, detail)
-            if self._output_lane is not None:
-                self._output_lane.submit(self._db_log_speculation, row)
-            else:
-                self._db_log_speculation(row)
-
-    def _db_log_speculation(self, row):
-        try:
-            self.dbconn.execute(
-                "INSERT INTO speculation_log "
-                "(capture_id, field_id, file_loc, reason, detail) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (self.capture_id or 0,) + row,
-            )
-        except Exception:
-            # diagnostics must never break the decode
-            pass
 
     def _accept_job(self, res):
         """Turn a speculative field result into a commit entry - or None
@@ -3354,7 +2885,7 @@ class LDdecode:
             "offset": offset,
             "independent": True,
             "initphase": False,
-            "result": (res["picture"], res["efm"], res["metrics"]),
+            "result": (res["picture"], res["efm"], res["bw_ratio"]),
             "audio": res["audio"],
         }
         self._chain_prev = f
@@ -3410,7 +2941,7 @@ class LDdecode:
         """Decode and commit the next field.
 
         Runs a small in-order pipeline: stage 1 (the sync/lineloc chain)
-        advances on this thread, stage 2 (downscale/metrics/dropouts)
+        advances on this thread, stage 2 (downscale/measure/dropouts)
         fans out per field to worker threads, and entries commit
         strictly in chain order.  With one thread the pipeline depth is
         1, which is plain serial decode; parallel depth only engages
@@ -3558,22 +3089,19 @@ class LDdecode:
 
         return None  # seeking won't work w/minutes only
 
-    def computeMetrics(self, f, fp=None, verbose=False):
-        from .metrics import computeMetrics
-        return computeMetrics(self.rf, f, fp, verbose, self.verboseVITS)
-
     @profile
     def buildmetadata(self, f, check_phase=True):
         """ returns field information dict and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
+        # Narrow the field's sync confidence with its final lineloc data.
+        # Not bookkeeping: sync_confidence gates the AGC and the chain
+        # validation, and the next field reads it off this one's anchor.
+        f.compute_syncconf()
+
         fi = {
             "isFirstField": bool(f.isFirstField),
-            "syncConf": f.compute_syncconf(),
-            "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
-            "fileLoc": int(np.floor(f.readloc)),
-            "medianBurstIRE": roundfloat(f.burstmedian),
         }
 
         if self.doDOD:
@@ -3587,9 +3115,6 @@ class LDdecode:
                     "startx": dropout_starts,
                     "endx": dropout_ends,
                 }
-
-        # This is a bitmap, not a counter
-        decodeFaults = 0
 
         fi["fieldPhaseID"] = f.fieldPhaseID
 
@@ -3606,34 +3131,14 @@ class LDdecode:
                     f"At field #{len(self.fieldinfo)}, Field phaseID sequence mismatch "
                     f"({prevfi['fieldPhaseID']}->{fi['fieldPhaseID']}) (player may be paused)"
                 )
-                decodeFaults |= 2
 
             if prevfi["isFirstField"] == fi["isFirstField"]:
                 # logs.logger.info('WARNING!  isFirstField stuck between fields')
                 if inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
-                    decodeFaults |= 1
                     fi["isFirstField"] = not prevfi["isFirstField"]
-                    fi["syncConf"] = 10
                 else:
                     logs.logger.error("Skipped field")
-                    decodeFaults |= 4
-                    fi["syncConf"] = 0
                     return fi, True
-
-        fi["decodeFaults"] = decodeFaults
-        fp_3d = self.fieldstack[2] if len(self.fieldinfo) >= 3 else None
-        base = getattr(self.fieldstack[0], "precomputed_metrics", None)
-        if base is not None:
-            # Per-field metrics were computed (and rounded) in stage 2;
-            # only the previous-frame-dependent part is added here.
-            from .metrics import computeMetricsFP
-            fi["vitsMetrics"] = computeMetricsFP(
-                self.rf, self.fieldstack[0], fp_3d, base
-            )
-        else:
-            fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], fp_3d)
-
-        fi["vbi"] = {"vbiData": [int(lc) for lc in f.linecode if lc is not None]}
 
         self.frameNumber = None
         if f.isFirstField:
@@ -3771,94 +3276,3 @@ class LDdecode:
             curfield += ((target - fnr) * 2) - 1
 
         return None
-
-    def build_sqlite_metadata(self):
-        cursor = self.dbconn.cursor()
-
-        for f in self.fieldstack:
-            if f:
-                break
-
-        if not f:
-            return
-
-        git_branch = git_commit = ""
-        if isinstance(self.version, str) and self.version:
-            if ":" in self.version:
-                git_branch, _, git_commit = self.version.partition(":")
-            elif "/" in self.version and self.version.count("/") == 1:
-                git_branch, git_commit = self.version.split("/", 1)
-            elif "+git." in self.version:
-                git_commit = self.version.split("+git.", 1)[1].split(".", 1)[0]
-                git_branch = "release"
-
-        spu = f.rf.SysParams["outfreq"]
-        badj = -1.4
-
-        video_values = (
-            f.rf.system, 'ld-decode',
-            git_branch, git_commit,
-            spu * 1000000,
-            int(np.round(f.rf.SysParams["activeVideoUS"][0] * spu + badj)),
-            int(np.round(f.rf.SysParams["activeVideoUS"][1] * spu + badj)),
-            f.rf.SysParams["outlinelen"], f.outlinecount, len(self.fieldinfo),
-            int(np.round(f.rf.SysParams["colorBurstUS"][0] * spu + badj)),
-            int(np.round(f.rf.SysParams["colorBurstUS"][1] * spu + badj)),
-            float(f.hz_to_output(f.rf.iretohz(100))),
-            float(f.hz_to_output(f.rf.iretohz(self.blackIRE))),
-            float(f.hz_to_output(f.rf.iretohz(0))),
-            0, f.rf.system == "NTSC", 0,
-        )
-
-        # capture_id is None on the first call (SQLite assigns the rowid);
-        # later calls pass the existing id so ON CONFLICT refreshes the row
-        # with the final calibration values.
-        cursor.execute("""
-            INSERT INTO capture (
-                capture_id,
-                system, decoder, git_branch, git_commit,
-                video_sample_rate, active_video_start, active_video_end,
-                field_width, field_height, number_of_sequential_fields,
-                colour_burst_start, colour_burst_end,
-                white_16b_ire, black_16b_ire, blanking_16b_ire,
-                is_mapped, is_subcarrier_locked, is_widescreen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(capture_id) DO UPDATE SET
-                system=excluded.system, decoder=excluded.decoder,
-                git_branch=excluded.git_branch, git_commit=excluded.git_commit,
-                video_sample_rate=excluded.video_sample_rate,
-                active_video_start=excluded.active_video_start,
-                active_video_end=excluded.active_video_end,
-                field_width=excluded.field_width, field_height=excluded.field_height,
-                number_of_sequential_fields=excluded.number_of_sequential_fields,
-                colour_burst_start=excluded.colour_burst_start,
-                colour_burst_end=excluded.colour_burst_end,
-                white_16b_ire=excluded.white_16b_ire,
-                black_16b_ire=excluded.black_16b_ire,
-                blanking_16b_ire=excluded.blanking_16b_ire,
-                is_mapped=excluded.is_mapped,
-                is_subcarrier_locked=excluded.is_subcarrier_locked,
-                is_widescreen=excluded.is_widescreen
-        """, (self.capture_id,) + video_values)
-
-        if not self.capture_id:
-            self.capture_id = cursor.lastrowid
-
-        if self.analog_audio < 0:
-            audio_sample_rate = (1000000 / self.rf.SysParams["line_period"]) * -self.analog_audio
-        else:
-            audio_sample_rate = self.analog_audio
-
-        pcm_values = (16, 1, 1, audio_sample_rate)
-
-        cursor.execute("""
-            INSERT INTO pcm_audio_parameters (
-                capture_id, bits, is_little_endian, is_signed, sample_rate
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(capture_id) DO UPDATE SET
-                bits=excluded.bits, is_little_endian=excluded.is_little_endian,
-                is_signed=excluded.is_signed, sample_rate=excluded.sample_rate
-        """, (self.capture_id,) + pcm_values)
-
-        self.dbconn.commit()
-        cursor.close()

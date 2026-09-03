@@ -13,8 +13,6 @@ confined to one band, a pedestal shift and a high-frequency loss.
 No capture file is read.
 """
 
-import inspect
-
 import numpy as np
 import pytest
 
@@ -50,17 +48,12 @@ def rendered(entry, origin_samples=0.0, **kwargs):
 # The loader is CVBS only
 # ---------------------------------------------------------------------------
 
-def test_a_tbc_path_is_refused_by_name():
-    with pytest.raises(ValueError, match=r"\.tbc"):
-        vm.load("somewhere/capture.tbc")
-
-
-def test_the_module_reaches_no_tbc_loader():
-    # The acceptance for this phase: load_cvbs is the only loader here, so a
-    # .tbc can never be measured through a second path.
-    assert not hasattr(vm, "load_tbc")
-    assert not hasattr(vm, "load_video")
-    assert "load_tbc" not in inspect.getsource(vm)
+def test_the_module_reaches_one_loader_only():
+    # Conformance is specified against the CVBS sample lattice and levels,
+    # so load_cvbs is the single entry point: no second path can slip a
+    # differently-scaled capture into the measurements.
+    loaders = {n for n in dir(vm) if n.startswith("load")}
+    assert loaders == {"load", "load_cvbs"}
 
 
 # ---------------------------------------------------------------------------

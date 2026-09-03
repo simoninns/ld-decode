@@ -4,32 +4,46 @@ The ld-decode application accepts FM RF captures input in '10-bit packed' format
 
 *The decoder also supports FLAC compressed captures, and lower sample rates if the input frequency is defined and bit-depths such as 8-bit & 16-bit.
 
-The output from ld-decode.py is a stream of 16-bit unsigned values; each value representing a single grey-scale value.  The file extension used by ld-decode is .tbc for both NTSC and PAL decoded frames aptly named the Time Base Corrected format.
+## Video output
 
-- PAL output is 1135x625 16-bit values. (280mbps) (2.1GB/min) (126GB/hour)
-- NTSC output is 910x525 16-bit values. (226.5mbps) (1.7GB/min) (102GB/hour)
+ld-decode writes composite video as a `.cvbs` file with a `.meta` SQLite
+sidecar, normatively defined by the
+[CVBS file format specification](https://github.com/simoninns/cvbs-file-format-specification).
+Samples are on the 4x subcarrier lattice, in one of two encodings:
 
-The 16-bit grey-scale values used by the output format are scaled representations of the standard 8-bit digital component values (i.e. an 8-bit right shift of the value will provide the standard 8-bit digital component intensity values).
+- `CVBS_U10_4FSC` — the normative 10-bit sample value in an `s16le`
+  container, with signed headroom below blanking. ld-decode's default
+  for PAL.
+- `CVBS_U16_4FSC` — the same signal scaled into the full 16-bit range.
+  ld-decode's default for NTSC.
 
-The frequency values for .tbc to analogue CVBS playback via DAC are the following:
+`--cvbs-encoding` selects the encoding explicitly. Frame geometry and
+sample rates:
 
-- PAL - 17727262 Hz
-- NTSC - 14318181 Hz
+- PAL — 709379 samples/frame (1135.0064 samples/line, 625 lines) at
+  17734475 Hz. The lattice is not line-locked, so a frame carries a
+  4-sample slip.
+- NTSC — 910x525 samples/frame at 14318181 Hz (orthogonal).
+
+## Audio and metadata sidecars
+
+- `<out>_audio_0.wav` — the analogue audio track, as the specification's
+  SMPTE 272M profile: 48 kHz, 24-bit, synchronous to the stored frames.
+- `<out>.meta` — the capture's SQLite metadata: preset, sample encoding,
+  levels, per-frame lock state and sequence continuity.
+- `<out>.dropouts.meta` — dropout runs, indexed per frame.
 
 ## EFM output sidecars
 
 When digital audio is enabled (the default), the decoder writes the EFM
 stream alongside the video output:
 
-- `.efm` — one byte per recovered T-value, in disc order. With
-  confidence output off (the `--tbc` default) each byte is the plain
-  T-value 3–11; with it on (always, in CVBS output mode; `--efm_conf on`
-  for TBC) each byte packs the T-value into its low nibble and a 4-bit
-  demodulator doubt into its high nibble (`t = byte & 0x0F`,
-  `doubt = byte >> 4`; 0 = full trust — so trusted bytes stay plain
-  T-values — and high values are Reed-Solomon erasure candidates). In
-  CVBS output mode a `.efm.meta` SQLite sidecar
-  indexes the stream per frame, as defined by the
+- `.efm` — one byte per recovered T-value, in disc order. Each byte
+  packs the T-value into its low nibble and a 4-bit demodulator doubt
+  into its high nibble (`t = byte & 0x0F`, `doubt = byte >> 4`; 0 = full
+  trust — so trusted bytes stay plain T-values — and high values are
+  Reed-Solomon erasure candidates). A `.efm.meta` SQLite sidecar indexes
+  the stream per frame, as defined by the
   [EFM extension format](https://github.com/simoninns/cvbs-file-format-specification/blob/main/docs/extensions/efm-extension-format.md)
   of the CVBS file format specification.
 - `.prefm` — the filtered EFM waveform before demodulation (int16 at the
@@ -48,7 +62,5 @@ Individual decodes will vary from disc-to-disc:
 * NPE - PAL CAV disc with 54348 frames
 * NPE - LDS (RF Capture 40MSPS 10-bit packed) = 109.4GB
 * NPE - LDF (RF Capture 40MSPS 16-bit FLAC compressed) = 22.6GB (Estimate*)
-* NPE - TBC (Indexed16) = 77.1GB
-* NPE - PCM (48K little Endian 16-bit signed) = 417.4MB
-* NPE - RGB (RGB 16-16-16) = 175.6GB
-* NPE - AVI (36min 13sec mp4) = 4.1GB
+* NPE - CVBS (CVBS_U10_4FSC) = 77.1GB
+* NPE - WAV (48K 24-bit) = 626.1MB

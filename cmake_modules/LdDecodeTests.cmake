@@ -25,30 +25,24 @@
 # build what it needs instead of reading a stale or missing artefact.
 #
 # Fixtures defined here, as "name  producer -> consumers":
-#   ntsc-tbc            decode-ntsc-basic         -> compare-ntsc-parallel-*,
-#                                                    roundtrip-ntsc-orc
-#   pal-tbc             decode-pal-basic          -> compare-pal-parallel-*,
-#                                                    roundtrip-pal-orc
+#   ntsc-basic          decode-ntsc-basic         -> compare-ntsc-parallel-*
+#   pal-basic           decode-pal-basic          -> compare-pal-parallel-*
 #   ntsc-parallel       decode-ntsc-parallel      -> compare-ntsc-parallel-*
 #   pal-parallel        decode-pal-parallel       -> compare-pal-parallel-*
 #   ntsc-cvbs           decode-ntsc-cvbs          -> verify-ntsc-cvbs,
 #                                                    analyze-ntsc-patterns,
 #                                                    analyze-ntsc-ntc7,
 #                                                    identify-ntsc-vits,
-#                                                    conformance-ntsc-vits,
-#                                                    roundtrip-ntsc-orc
+#                                                    conformance-ntsc-vits
 #   pal-cvbs            decode-pal-cvbs           -> verify-pal-cvbs,
 #                                                    analyze-pal-patterns,
 #                                                    identify-pal-vits,
-#                                                    conformance-pal-vits,
-#                                                    compare-pal-cvbs-parallel-*,
-#                                                    roundtrip-pal-orc
-#   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
-#   jason-tbc           decode-jason-testpattern  -> efm-quality-jason-testpattern
-#   jason-pll-tbc       decode-jason-pll          -> efm-quality-jason-pll,
+#                                                    conformance-pal-vits
+#   jason-basic         decode-jason-testpattern  -> efm-quality-jason-testpattern
+#   jason-pll           decode-jason-pll          -> efm-quality-jason-pll,
 #                                                    compare-jason-pll-parallel-*
 #   jason-pll-parallel  decode-jason-pll-parallel -> compare-jason-pll-parallel-*
-#   issue176-tbc        decode-issue176           -> efm-quality-issue176
+#   issue176            decode-issue176           -> efm-quality-issue176
 #   ntsc-cut-ldf        cut-ntsc-segment          -> decode-ntsc-cut
 #   pal-cut-ldf         cut-pal-segment           -> decode-pal-cut
 #   ntsc-cut-lds        cut-ntsc-lds              -> decode-ntsc-lds,
@@ -134,35 +128,34 @@ endif()
 # Decode contracts
 # ---------------------------------------------------------------------------
 
-# Test that ld-decode can decode NTSC files and produce TBC output
-# (CVBS is the default output; --tbc selects the legacy path these
-# comparison and analysis fixtures are built on)
+# Test that ld-decode can decode NTSC files end to end.  Whole-capture
+# decodes: they are the serial reference for the threaded comparisons
+# below and the only decodes long enough to feed the EFM T-value gates.
 add_test(
     NAME decode-ntsc-basic
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-ntsc-basic PROPERTIES
     LABELS "functional;slow"
-    FIXTURES_SETUP ntsc-tbc
+    FIXTURES_SETUP ntsc-basic
     TIMEOUT 1800
 )
 
-# Test that ld-decode can decode PAL files and produce TBC output
+# Test that ld-decode can decode PAL files end to end
 add_test(
     NAME decode-pal-basic
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc --PAL
+        --PAL
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-pal-basic PROPERTIES
     LABELS "functional;slow"
-    FIXTURES_SETUP pal-tbc
+    FIXTURES_SETUP pal-basic
     TIMEOUT 1800
 )
 
@@ -173,7 +166,7 @@ set_tests_properties(decode-pal-basic PROPERTIES
 # parameter adoptions.
 add_test(
     NAME decode-ntsc-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --tbc -t 8 --exact-speculation
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --exact-speculation
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -186,7 +179,7 @@ set_tests_properties(decode-ntsc-parallel PROPERTIES
 
 add_test(
     NAME decode-pal-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --tbc -t 8 --PAL --exact-speculation
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --PAL --exact-speculation
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -197,7 +190,12 @@ set_tests_properties(decode-pal-parallel PROPERTIES
     TIMEOUT 1800
 )
 
-foreach(ext tbc pcm efm)
+# Video, metadata, analogue audio and EFM each come off a separate path
+# through the threaded decode, so a race in one would not show up in the
+# others.  The .meta sidecar is compared too: it records the per-frame
+# lock state and sequence, which the threaded path could get wrong while
+# the samples stayed right.
+foreach(ext cvbs meta efm)
     add_test(
         NAME compare-ntsc-parallel-${ext}
         COMMAND ${CMAKE_COMMAND} -E compare_files
@@ -206,15 +204,30 @@ foreach(ext tbc pcm efm)
     )
     set_tests_properties(compare-ntsc-parallel-${ext} PROPERTIES
         LABELS "functional"
-        FIXTURES_REQUIRED "ntsc-parallel;ntsc-tbc"
+        FIXTURES_REQUIRED "ntsc-parallel;ntsc-basic"
         TIMEOUT 120
     )
 endforeach()
 
-# The same three outputs as NTSC above.  Video, analogue audio and EFM each
-# come off a separate path through the threaded decode, so a race in one
-# would not show up in the others.
-foreach(ext tbc pcm efm)
+# The analogue audio goes to a WAV sidecar whose name has no extension
+# separator, so it needs its own entry rather than another pass of the
+# loop above.
+add_test(
+    NAME compare-ntsc-parallel-audio
+    COMMAND ${CMAKE_COMMAND} -E compare_files
+        ${CMAKE_BINARY_DIR}/testout/ntsc-parallel_audio_0.wav
+        ${CMAKE_BINARY_DIR}/testout/ntsc-basic_audio_0.wav
+)
+set_tests_properties(compare-ntsc-parallel-audio PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED "ntsc-parallel;ntsc-basic"
+    TIMEOUT 120
+)
+
+# PAL is the case that most needs this: its 4fsc lattice is not
+# line-locked (1135.0064 samples/line), so the CVBS writer carries a
+# running sample slip that a threaded run could resynchronise differently.
+foreach(ext cvbs meta efm)
     add_test(
         NAME compare-pal-parallel-${ext}
         COMMAND ${CMAKE_COMMAND} -E compare_files
@@ -223,10 +236,25 @@ foreach(ext tbc pcm efm)
     )
     set_tests_properties(compare-pal-parallel-${ext} PROPERTIES
         LABELS "functional"
-        FIXTURES_REQUIRED "pal-parallel;pal-tbc"
+        FIXTURES_REQUIRED "pal-parallel;pal-basic"
         TIMEOUT 120
     )
 endforeach()
+
+# The analogue audio goes to a WAV sidecar whose name has no extension
+# separator, so it needs its own entry rather than another pass of the
+# loop above.
+add_test(
+    NAME compare-pal-parallel-audio
+    COMMAND ${CMAKE_COMMAND} -E compare_files
+        ${CMAKE_BINARY_DIR}/testout/pal-parallel_audio_0.wav
+        ${CMAKE_BINARY_DIR}/testout/pal-basic_audio_0.wav
+)
+set_tests_properties(compare-pal-parallel-audio PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED "pal-parallel;pal-basic"
+    TIMEOUT 120
+)
 
 # ---------------------------------------------------------------------------
 # Signal-quality analysis
@@ -237,11 +265,10 @@ endforeach()
 # only measures those; the pass regex asserts the patterns this test disc
 # is known to carry were detected and measured.
 #
-# These run on the .cvbs output, not the .tbc: .cvbs is the format the
-# measurement work is standardising on, and it is the only way CI exercises
-# CVBS_U10_4FSC, the sample encoding ld-decode writes by default for PAL.
-# Neither decode passes --cvbs-encoding, so each system is analysed in the
-# encoding its users actually get.
+# These run on the short -l 6 decodes rather than the whole-capture ones,
+# and neither passes --cvbs-encoding, so each system is analysed in the
+# encoding its users actually get (CVBS_U10_4FSC for PAL, CVBS_U16_4FSC
+# for NTSC).
 add_test(
     NAME analyze-ntsc-patterns
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
@@ -265,16 +292,13 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
 add_test(
     NAME decode-ntsc-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs -l 6
+        -l 6
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-ntsc-cvbs PROPERTIES
     LABELS "functional;slow"
-    # CVBS output always writes the confidence-packed .efm (doubt in the
-    # high nibble, per the EFM extension format), so
-    # efm-quality-ntsc-cvbs scores with --packed.
     FIXTURES_SETUP ntsc-cvbs
     TIMEOUT 1800
 )
@@ -297,7 +321,7 @@ set_tests_properties(verify-ntsc-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --PAL -l 6
+        --PAL -l 6
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -319,93 +343,6 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
     FIXTURES_REQUIRED pal-cvbs
     PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
     TIMEOUT 300
-)
-
-# The CVBS writer sits on the output path, so a threaded decode has to
-# produce the same file as a serial one.  PAL is the case worth spending a
-# decode on: its 4fsc lattice is not line-locked (1135.0064 samples/line), so
-# the writer carries a running sample slip that a threaded run could
-# resynchronise differently.  The metadata sidecar is compared too - it
-# records the per-frame lock state and sequence, which the threaded path
-# could get wrong while the samples stayed right.
-add_test(
-    NAME decode-pal-cvbs-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --PAL -l 6 -t 8 --exact-speculation
-        ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
-        ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-)
-set_tests_properties(decode-pal-cvbs-parallel PROPERTIES
-    LABELS "functional;slow"
-    FIXTURES_SETUP pal-cvbs-parallel
-    TIMEOUT 1800
-)
-
-foreach(ext cvbs meta efm)
-    add_test(
-        NAME compare-pal-cvbs-parallel-${ext}
-        COMMAND ${CMAKE_COMMAND} -E compare_files
-            ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel.${ext}
-            ${CMAKE_BINARY_DIR}/testout/pal-cvbs.${ext}
-    )
-    set_tests_properties(compare-pal-cvbs-parallel-${ext} PROPERTIES
-        LABELS "functional"
-        FIXTURES_REQUIRED "pal-cvbs-parallel;pal-cvbs"
-        TIMEOUT 120
-    )
-endforeach()
-
-# In CVBS mode the analogue audio goes to a WAV sidecar rather than to .pcm,
-# so it needs its own comparison rather than another pass of the loop above.
-add_test(
-    NAME compare-pal-cvbs-parallel-audio
-    COMMAND ${CMAKE_COMMAND} -E compare_files
-        ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel_audio_0.wav
-        ${CMAKE_BINARY_DIR}/testout/pal-cvbs_audio_0.wav
-)
-set_tests_properties(compare-pal-cvbs-parallel-audio PROPERTIES
-    LABELS "functional"
-    FIXTURES_REQUIRED "pal-cvbs-parallel;pal-cvbs"
-    TIMEOUT 120
-)
-
-# Round-trip through decode-orc's chroma decoder: renders one frame from
-# the CVBS output and one from the TBC output through the same sink and
-# asserts they match (parity-balanced diff, zero shift).  This is the
-# check that catches field-placement geometry errors the analysis-only
-# checks cannot see.  Skips when orc-cli is not installed (ORC_CLI env
-# var or ~/ld-decode/decode-orc/result/bin/orc-cli).
-add_test(
-    NAME roundtrip-ntsc-orc
-    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_orc_roundtrip.py
-        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
-        ${CMAKE_BINARY_DIR}/testout/ntsc-basic
-        NTSC
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-set_tests_properties(roundtrip-ntsc-orc PROPERTIES
-    LABELS "functional"
-    FIXTURES_REQUIRED "ntsc-cvbs;ntsc-tbc"
-    PASS_REGULAR_EXPRESSION "ORC ROUNDTRIP: PASS"
-    SKIP_REGULAR_EXPRESSION "ORC ROUNDTRIP: SKIPPED"
-    TIMEOUT 600
-)
-
-add_test(
-    NAME roundtrip-pal-orc
-    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_orc_roundtrip.py
-        ${CMAKE_BINARY_DIR}/testout/pal-cvbs
-        ${CMAKE_BINARY_DIR}/testout/pal-basic
-        PAL
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-set_tests_properties(roundtrip-pal-orc PROPERTIES
-    LABELS "functional"
-    FIXTURES_REQUIRED "pal-cvbs;pal-tbc"
-    PASS_REGULAR_EXPRESSION "ORC ROUNDTRIP: PASS"
-    SKIP_REGULAR_EXPRESSION "ORC ROUNDTRIP: SKIPPED"
-    TIMEOUT 600
 )
 
 # The NTSC test disc carries broadcast-style NTC-7 VITS: composite on first
@@ -601,7 +538,7 @@ function(add_vits_radius_cut label system)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation
+            ${system_flag} --exact-speculation
             ${TESTDATA_DIR}/radius/${label}.ldf
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -696,7 +633,7 @@ function(add_vits_capture_conformance label system capture)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation
+            ${system_flag} --exact-speculation
             ${TESTDATA_DIR}/${capture}
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -755,22 +692,21 @@ add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
 
 # jason-testpattern is the PAL EFM gate: a short, clean capture the default
 # (timing-recovery) demodulator frames perfectly (sync_rate 1.0,
-# frame_588_fraction 1.0), so it is pinned at (near) perfection.  The
-# decode also opts in to confidence-packed .efm output (off by default in
-# TBC mode), making this the test that holds the doubt-nibble packing to
-# its contract: the low nibbles must still score perfectly.
+# frame_588_fraction 1.0), so it is pinned at (near) perfection.  Every
+# .efm byte carries its doubt nibble (the EFM extension format defines
+# the layout), so this is also the test that holds the packing to its
+# contract: the low nibbles must still score perfectly.
 add_test(
     NAME decode-jason-testpattern
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc --PAL
+        --PAL
         ${TESTDATA_DIR}/pal/jason-testpattern.ldf
         ${CMAKE_BINARY_DIR}/testout/jason-testpattern
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-jason-testpattern PROPERTIES
     LABELS "functional"
-    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
-    FIXTURES_SETUP jason-tbc
+    FIXTURES_SETUP jason-basic
     TIMEOUT 600
 )
 
@@ -780,13 +716,13 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efm
         --packed
         --min-sync-rate 0.999 --min-frame-588 0.999
-        --max-invalid-t 0 --min-t-values 143000
+        --max-invalid-t 0 --min-t-values 107000
         --json ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efm-quality.json
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(efm-quality-jason-testpattern PROPERTIES
     LABELS "functional"
-    FIXTURES_REQUIRED jason-tbc
+    FIXTURES_REQUIRED jason-basic
     PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
     TIMEOUT 120
 )
@@ -796,14 +732,13 @@ set_tests_properties(efm-quality-jason-testpattern PROPERTIES
 add_test(
     NAME decode-issue176
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc
         ${TESTDATA_DIR}/ntsc/issue176.ldf
         ${CMAKE_BINARY_DIR}/testout/issue176
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-issue176 PROPERTIES
     LABELS "functional"
-    FIXTURES_SETUP issue176-tbc
+    FIXTURES_SETUP issue176
     TIMEOUT 600
 )
 
@@ -811,6 +746,7 @@ add_test(
     NAME efm-quality-issue176
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
         ${CMAKE_BINARY_DIR}/testout/issue176.efm
+        --packed
         --min-sync-rate 0.999 --min-frame-588 0.999
         --max-invalid-t 0 --min-t-values 116000
         --json ${CMAKE_BINARY_DIR}/testout/issue176.efm-quality.json
@@ -818,29 +754,27 @@ add_test(
 )
 set_tests_properties(efm-quality-issue176 PROPERTIES
     LABELS "functional"
-    FIXTURES_REQUIRED issue176-tbc
+    FIXTURES_REQUIRED issue176
     PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
     TIMEOUT 120
 )
 
 # The previous run-length PLL stays available behind --efm_demod pll (the
 # timing-recovery demodulator is the default); this chain keeps the PLL
-# gated at its own measured performance (with confidence-packed output, so
-# the packing is covered on this path too), and checks the serial/threaded
+# gated at its own measured performance, and checks the serial/threaded
 # .efm bit-identity guarantee with the non-default selector - the packed
 # stream carries the confidences, so the compare covers those as well.
 add_test(
     NAME decode-jason-pll
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc --PAL --efm_demod pll
+        --PAL --efm_demod pll
         ${TESTDATA_DIR}/pal/jason-testpattern.ldf
         ${CMAKE_BINARY_DIR}/testout/jason-pll
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-jason-pll PROPERTIES
     LABELS "functional"
-    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
-    FIXTURES_SETUP jason-pll-tbc
+    FIXTURES_SETUP jason-pll
     TIMEOUT 600
 )
 
@@ -850,13 +784,13 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/jason-pll.efm
         --packed
         --min-sync-rate 0.999 --min-frame-588 0.999
-        --max-invalid-t 0 --min-t-values 143000
+        --max-invalid-t 0 --min-t-values 107000
         --json ${CMAKE_BINARY_DIR}/testout/jason-pll.efm-quality.json
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(efm-quality-jason-pll PROPERTIES
     LABELS "functional"
-    FIXTURES_REQUIRED jason-pll-tbc
+    FIXTURES_REQUIRED jason-pll
     PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
     TIMEOUT 120
 )
@@ -864,14 +798,13 @@ set_tests_properties(efm-quality-jason-pll PROPERTIES
 add_test(
     NAME decode-jason-pll-parallel
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --tbc --PAL --efm_demod pll -t 4 --exact-speculation
+        --PAL --efm_demod pll -t 4 --exact-speculation
         ${TESTDATA_DIR}/pal/jason-testpattern.ldf
         ${CMAKE_BINARY_DIR}/testout/jason-pll-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 set_tests_properties(decode-jason-pll-parallel PROPERTIES
     LABELS "functional"
-    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
     FIXTURES_SETUP jason-pll-parallel
     TIMEOUT 600
 )
@@ -885,28 +818,23 @@ foreach(ext efm)
     )
     set_tests_properties(compare-jason-pll-parallel-${ext} PROPERTIES
         LABELS "functional"
-        FIXTURES_REQUIRED "jason-pll-parallel;jason-pll-tbc"
+        FIXTURES_REQUIRED "jason-pll-parallel;jason-pll"
         TIMEOUT 120
     )
 endforeach()
 
-# The remaining gates ride on decodes that already run: the basic NTSC TBC
-# and CVBS decodes (ve-snw-cut carries digital audio), and the EFM-bearing
+# The remaining gates ride on decodes that already run: the whole-capture
+# and -l 6 NTSC decodes (ve-snw-cut carries digital audio), and the EFM-bearing
 # VITS captures.  add_efm_quality(<label> <fixture> <labels> <efm-file>
 # <min-sync-rate> <min-frame-588> <min-t-values>) keeps each threshold set
 # next to the capture it measures.
 function(add_efm_quality label fixture test_labels efm_file min_sync min_588 min_t)
-    # Pass PACKED after the required arguments when the fixture writes
-    # confidence-packed bytes (doubt in the high nibble - always the case
-    # for CVBS output).
-    set(packed_arg "")
-    if("PACKED" IN_LIST ARGN)
-        set(packed_arg "--packed")
-    endif()
+    # Every .efm byte carries its doubt nibble: the EFM extension format
+    # defines the layout, and it is the only .efm ld-decode writes.
     add_test(
         NAME efm-quality-${label}
         COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
-            ${CMAKE_BINARY_DIR}/testout/${efm_file} ${packed_arg}
+            ${CMAKE_BINARY_DIR}/testout/${efm_file} --packed
             --min-sync-rate ${min_sync} --min-frame-588 ${min_588}
             --max-invalid-t 0 --min-t-values ${min_t}
             --json ${CMAKE_BINARY_DIR}/testout/${label}.efm-quality.json
@@ -920,24 +848,24 @@ function(add_efm_quality label fixture test_labels efm_file min_sync min_588 min
     )
 endfunction()
 
-add_efm_quality(ntsc-basic ntsc-tbc "functional"
+add_efm_quality(ntsc-basic ntsc-basic "functional"
     ntsc-basic.efm 0.999 0.997 860000)
 add_efm_quality(ntsc-cvbs ntsc-cvbs "functional"
-    ntsc-cvbs.efm 0.999 0.995 178000 PACKED)
+    ntsc-cvbs.efm 0.999 0.995 178000)
 add_efm_quality(ve-monitor ve-monitor-cvbs "functional;vits"
-    ve-monitor.efm 0.998 0.995 2610000 PACKED)
+    ve-monitor.efm 0.998 0.995 2610000)
 add_efm_quality(dolby-surround-side1-inner dolby-surround-side1-inner-cvbs
-    "functional;vits" dolby-surround-side1-inner.efm 0.998 0.994 594000 PACKED)
+    "functional;vits" dolby-surround-side1-inner.efm 0.998 0.994 594000)
 add_efm_quality(dolby-surround-side1-middle dolby-surround-side1-middle-cvbs
-    "functional;vits" dolby-surround-side1-middle.efm 0.998 0.995 564000 PACKED)
+    "functional;vits" dolby-surround-side1-middle.efm 0.998 0.995 564000)
 add_efm_quality(dolby-surround-side1-outer dolby-surround-side1-outer-cvbs
-    "functional;vits" dolby-surround-side1-outer.efm 0.998 0.995 594000 PACKED)
+    "functional;vits" dolby-surround-side1-outer.efm 0.998 0.995 594000)
 add_efm_quality(domesday-ds2-community-north-inner
     domesday-ds2-community-north-inner-cvbs "functional;vits"
-    domesday-ds2-community-north-inner.efm 0.999 0.995 891000 PACKED)
+    domesday-ds2-community-north-inner.efm 0.999 0.995 891000)
 add_efm_quality(domesday-ds2-community-north-middle
     domesday-ds2-community-north-middle-cvbs "functional;vits"
-    domesday-ds2-community-north-middle.efm 0.999 0.995 1034000 PACKED)
+    domesday-ds2-community-north-middle.efm 0.999 0.995 1034000)
 
 # ---------------------------------------------------------------------------
 # ld-cut and ld-compress

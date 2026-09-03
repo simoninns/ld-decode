@@ -170,7 +170,7 @@ jobs:
           2. Open a command prompt or PowerShell window
           3. Navigate to the bin directory
           4. Run the tools:
-             - ld-decode.bat [options] input.lds output.tbc
+             - ld-decode.bat [options] input.lds output
              - ld-cut.bat [options] input.ldf output.ldf
              - ld-compress.bat [options] input.lds
              - ld-ldf-reader-py.bat [options] input.ldf

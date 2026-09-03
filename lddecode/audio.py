@@ -134,7 +134,7 @@ def _downscale_audio_to_output(
 # audio and is the default; 24-bit (bits=24) is used for the CVBS SMPTE 272M
 # audio profile, where the demod's sub-16-bit resolution is actually kept.
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100,
-                    rv=None, bits=16):
+                    bits=16):
     """downscale audio for output.
 
     Parameters:
@@ -173,16 +173,12 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100,
         fullscale,
     )
 
-    # int16 for the 16-bit path keeps the .pcm output byte-for-byte as before
-    # (values sit within int16 range, so the narrowing is exact)
+    # bits=16 narrows to int16 (values sit within int16 range, so the
+    # narrowing is exact); the CVBS profile takes bits=24 and stays int32
     if bits <= 16:
         output = output.astype(np.int16)
 
     if failed:
         logs.logger.warning("Analog audio processing error, muting samples")
-
-    if rv is not None:
-        rv['dsaudio'] = output
-        rv['audio_next_offset'] = arange[-1] - frametime
 
     return output, arange[-1] - frametime

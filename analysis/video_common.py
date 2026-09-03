@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Shared TBC/CVBS loading, chroma demodulation, and test-pattern detection.
+"""Shared CVBS loading, chroma demodulation, and test-pattern detection.
 
 Used by the analysis scripts (smpte_analyze.py, differential_phase.py).
-Supports NTSC and PAL .tbc files (with companion .tbc.db) and CVBS
-.cvbs/.composite files (with companion .meta) in either of the 4fsc
-sample encodings, CVBS_U10_4FSC and CVBS_U16_4FSC — see load_video().
+Supports NTSC and PAL CVBS .cvbs/.composite files (with companion .meta)
+in either of the 4fsc sample encodings, CVBS_U10_4FSC and
+CVBS_U16_4FSC — see load_video().
 
 Chroma demodulation here is system-independent: both NTSC and PAL output
 is sampled at exactly 4x the colour subcarrier, so the subcarrier sits at
@@ -15,7 +15,7 @@ of the same line.
 
 Run directly to report which test patterns are present:
 
-    python analysis/video_common.py file.tbc
+    python analysis/video_common.py file.cvbs
     python analysis/video_common.py file.composite
 """
 
@@ -32,12 +32,12 @@ from vits_reference import NTSC_MULTIBURST_NTC7
 
 
 # ---------------------------------------------------------------------------
-# TBC loading
+# CVBS loading
 # ---------------------------------------------------------------------------
 
 # CVBS 4fsc field geometry (see cvbs-file-format-specification/).  Levels
-# are the spec's 10-bit presets; active/burst windows match what ld-decode
-# writes to .tbc.db for the same 4fsc line convention (0H at +0.8).
+# are the spec's 10-bit presets; active/burst windows follow the same
+# 4fsc line convention ld-decode writes (0H at +0.8).
 CVBS_GEOMETRY = {
     "NTSC": {
         "field_width": 910, "field_height": 263,
@@ -137,69 +137,36 @@ def decode_cvbs_samples(raw, encoding):
 
 
 class CaptureParams:
-    """System parameters from the capture table of a .tbc.db."""
+    """System parameters for a CVBS capture, from the spec presets.
 
-    def __init__(self, db_path):
-        con = sqlite3.connect(db_path)
-        con.row_factory = sqlite3.Row
-        row = con.execute("SELECT * FROM capture LIMIT 1").fetchone()
-        if row is None:
-            raise RuntimeError(f"No capture record in {db_path}")
+    The white/black/blanking levels are the specification's normative
+    10-bit values, which is the domain decode_cvbs_samples() returns for
+    either sample encoding: output_to_ire() is a ratio of a sample
+    against those levels, so the domain cancels and a U10 and a U16 file
+    of the same decode measure the same IRE.
 
-        self.system = row["system"]
-        self.field_width = row["field_width"]
-        self.field_height = row["field_height"]
-        self.video_sample_rate = row["video_sample_rate"]
+    black_level, when given, comes from the .meta cvbs_file record and is
+    already a 10-bit value.
+    """
+
+    def __init__(self, system, black_level=None,
+                 sample_encoding="CVBS_U10_4FSC"):
+        g = CVBS_GEOMETRY[system]
+        self.system = system
+        self.field_width = g["field_width"]
+        self.field_height = g["field_height"]
+        self.video_sample_rate = g["sample_rate"]
         self.sample_rate_mhz = self.video_sample_rate / 1e6
-        self.white_16b_ire = row["white_16b_ire"]
-        self.black_16b_ire = row["black_16b_ire"]
-        self.blanking_16b_ire = row["blanking_16b_ire"]
-        self.active_video_start = row["active_video_start"]
-        self.active_video_end = row["active_video_end"]
-        self.colour_burst_start = row["colour_burst_start"]
-        self.colour_burst_end = row["colour_burst_end"]
-        self.capture_id = row["capture_id"]
-        # .tbc samples are 16-bit and carry no CVBS sample encoding preset.
-        self.sample_encoding = None
-
+        lv = g["levels"]
+        self.white_16b_ire = lv["white"]
+        self.blanking_16b_ire = lv["blanking"]
+        self.black_16b_ire = (black_level if black_level is not None
+                              else lv["black"])
+        self.active_video_start, self.active_video_end = g["active"]
+        self.colour_burst_start, self.colour_burst_end = g["burst"]
+        self.sample_encoding = sample_encoding
         self.out_scale = (self.white_16b_ire - self.blanking_16b_ire) / 100.0
         self.field_samples = self.field_width * self.field_height
-        con.close()
-
-    @classmethod
-    def for_cvbs(cls, system, black_level=None, sample_encoding="CVBS_U10_4FSC"):
-        """Build params for a CVBS file from the spec presets.
-
-        The white/black/blanking levels are the specification's normative
-        10-bit values, which is the domain decode_cvbs_samples() returns
-        for either sample encoding.  They keep the *_16b_ire names of the
-        .tbc.db capture schema this class also serves, but for CVBS they
-        are 10-bit: output_to_ire() is a ratio of a sample against those
-        levels, so the domain cancels and a U10 and a U16 file of the same
-        decode measure the same IRE.
-
-        black_level, when given, comes from the .meta cvbs_file record and
-        is already a 10-bit value.
-        """
-        g = CVBS_GEOMETRY[system]
-        p = cls.__new__(cls)
-        p.system = system
-        p.field_width = g["field_width"]
-        p.field_height = g["field_height"]
-        p.video_sample_rate = g["sample_rate"]
-        p.sample_rate_mhz = p.video_sample_rate / 1e6
-        lv = g["levels"]
-        p.white_16b_ire = lv["white"]
-        p.blanking_16b_ire = lv["blanking"]
-        p.black_16b_ire = (black_level if black_level is not None
-                           else lv["black"])
-        p.active_video_start, p.active_video_end = g["active"]
-        p.colour_burst_start, p.colour_burst_end = g["burst"]
-        p.capture_id = None
-        p.sample_encoding = sample_encoding
-        p.out_scale = (p.white_16b_ire - p.blanking_16b_ire) / 100.0
-        p.field_samples = p.field_width * p.field_height
-        return p
 
     def __repr__(self):
         return (
@@ -216,9 +183,9 @@ class VideoField:
     lineslice_tbc(), output_to_ire().
     """
 
-    def __init__(self, tbc_data, field_index, params, record):
+    def __init__(self, samples, field_index, params, record):
         offset = field_index * params.field_samples
-        self.dspicture = tbc_data[offset:offset + params.field_samples]
+        self.dspicture = samples[offset:offset + params.field_samples]
         self.fieldPhaseID = record["field_phase_id"]
         self.isFirstField = bool(record["is_first_field"])
         self.field_id = record["field_id"]
@@ -241,42 +208,6 @@ class VideoField:
         p = self.params
         sl = slice((line - 1) * p.field_width, line * p.field_width)
         return self.output_to_ire(self.dspicture[sl])
-
-
-def load_tbc(tbc_path, max_fields=None):
-    """Load a TBC file (NTSC or PAL).  Returns (params, fields, tbc_data)."""
-    db_path = tbc_path + ".db"
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f"Database not found: {db_path}")
-    if not os.path.exists(tbc_path):
-        raise FileNotFoundError(f"TBC file not found: {tbc_path}")
-
-    params = CaptureParams(db_path)
-
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    records = con.execute(
-        "SELECT field_id, is_first_field, field_phase_id "
-        "FROM field_record WHERE capture_id = ? ORDER BY field_id",
-        (params.capture_id,),
-    ).fetchall()
-    con.close()
-
-    fd = os.open(tbc_path, os.O_RDONLY)
-    try:
-        mm = mmap.mmap(fd, os.fstat(fd).st_size, access=mmap.ACCESS_READ)
-        tbc_data = np.frombuffer(mm, dtype=np.uint16)
-    finally:
-        os.close(fd)
-
-    n = len(tbc_data) // params.field_samples
-    if n < len(records):
-        records = records[:n]
-    if max_fields is not None:
-        records = records[:max_fields]
-
-    fields = [VideoField(tbc_data, i, params, records[i]) for i in range(len(records))]
-    return params, fields, tbc_data
 
 
 def _cvbs_extract_field(data, frame_idx, parity, params):
@@ -328,8 +259,8 @@ def load_cvbs(path, max_fields=None):
     data handed to callers is in the normative 10-bit domain either way,
     so the two are interchangeable for measurement.
 
-    Accepts the .cvbs/.composite path or the basename.  Returns (params,
-    fields, data) with the same interfaces as load_tbc().  Note that
+    Accepts the .cvbs/.composite path or the basename.  Returns
+    (params, fields, data).  Note that
     `data` is the memory-mapped file in its *container* dtype, which is
     what params.sample_encoding names; pass it through
     decode_cvbs_samples() to read sample values from it directly.
@@ -366,7 +297,7 @@ def load_cvbs(path, max_fields=None):
     if system not in CVBS_GEOMETRY:
         raise RuntimeError(f"Unsupported CVBS preset: {system}")
 
-    params = CaptureParams.for_cvbs(system, black_level, encoding)
+    params = CaptureParams(system, black_level, encoding)
     phase_cycle = CVBS_GEOMETRY[system]["phase_cycle"]
 
     fd = os.open(comp_path, os.O_RDONLY)
@@ -397,16 +328,8 @@ def load_cvbs(path, max_fields=None):
 
 
 def load_video(path, max_fields=None):
-    """Load a .tbc or CVBS .cvbs/.composite file, dispatching on the
-    extension (or, for a bare basename, on which companion metadata file
-    exists)."""
-    if path.endswith((".cvbs", ".composite")):
-        return load_cvbs(path, max_fields)
-    if path.endswith(".tbc"):
-        return load_tbc(path, max_fields)
-    if os.path.exists(path + ".meta"):
-        return load_cvbs(path, max_fields)
-    return load_tbc(path, max_fields)
+    """Load a CVBS .cvbs/.composite file, by path or by basename."""
+    return load_cvbs(path, max_fields)
 
 
 # ---------------------------------------------------------------------------
@@ -1630,12 +1553,9 @@ def pal_fold_uv(line_phasors, expected_hues):
 
 def main():
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} file.tbc|file.cvbs", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} file.cvbs", file=sys.stderr)
         return 2
-    if sys.argv[1].endswith((".cvbs", ".composite")):
-        params, fields, _ = load_cvbs(sys.argv[1])
-    else:
-        params, fields, _ = load_tbc(sys.argv[1])
+    params, fields, _ = load_cvbs(sys.argv[1])
     print(f"{sys.argv[1]}: {params!r}, {len(fields)} fields")
     det = detect_patterns(params, fields)
     for line in summarize_patterns(det, fields):

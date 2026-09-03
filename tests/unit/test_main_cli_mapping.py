@@ -85,38 +85,30 @@ def test_the_sample_rate_accepts_a_suffixed_frequency():
 # --- output format ------------------------------------------------------
 
 
-def test_composite_output_is_the_default():
-    """ld-decode writes CVBS unless asked for TBC (spec v1.6.0)."""
-    assert parse().cvbs is True
-    assert extra()["output_cvbs"] is True
+@pytest.mark.parametrize("flag", ["--tbc", "--cvbs"])
+def test_the_retired_output_selectors_fail_rather_than_being_ignored(flag):
+    """CVBS is the only video output.  The old selectors still parse so
+    that they can be rejected with an explanation - left out entirely,
+    argparse prefix matching would read "--tbc" as "--tbc_efm"."""
+    with pytest.raises(SystemExit) as exit_info:
+        options(flag)
 
-
-def test_the_tbc_flag_selects_the_time_base_corrected_output():
-    assert parse("--tbc").cvbs is False
-    assert "output_cvbs" not in extra("--tbc")
-
-
-def test_the_output_flags_are_last_one_wins():
-    """They share one destination, so the later flag on the line decides --
-    which is what makes a wrapper script able to override a default."""
-    assert parse("--cvbs", "--tbc").cvbs is False
-    assert parse("--tbc", "--cvbs").cvbs is True
+    assert exit_info.value.code == 1
 
 
 def test_a_japanese_ntsc_disc_moves_the_cvbs_black_level():
     """NTSC-J has no 7.5 IRE setup, so composite black sits at a different
-    code; only meaningful when composite is actually being written."""
-    assert extra("--cvbs", "-j")["cvbs_black_level"] == 240
-    assert "cvbs_black_level" not in extra("--cvbs")
-    assert "cvbs_black_level" not in extra("--tbc", "-j")
+    code."""
+    assert extra("-j")["cvbs_black_level"] == 240
+    assert "cvbs_black_level" not in extra()
 
 
 def test_the_cvbs_encoding_is_passed_through():
     """The sample encodings are a closed set, so a typo is caught by argparse
     rather than reaching the writer."""
-    assert extra("--cvbs", "--cvbs-encoding", "CVBS_U16_4FSC")[
+    assert extra("--cvbs-encoding", "CVBS_U16_4FSC")[
         "cvbs_encoding"] == "CVBS_U16_4FSC"
-    assert "cvbs_encoding" not in extra("--cvbs")
+    assert "cvbs_encoding" not in extra()
 
     with pytest.raises(SystemExit) as exit_info:
         parse("--cvbs-encoding", "yc")

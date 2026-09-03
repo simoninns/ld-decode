@@ -269,10 +269,10 @@ private:
 Example:
 ```python
 def decode_video(input_file, output_file, system='pal'):
-    """Decode video from TBC file.
+    """Decode video from a CVBS file.
     
     Args:
-        input_file (str): Path to input TBC file
+        input_file (str): Path to input CVBS file
         output_file (str): Path to output file
         system (str): Video system ('pal' or 'ntsc')
     

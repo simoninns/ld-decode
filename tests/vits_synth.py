@@ -64,7 +64,7 @@ def make_field(system, is_first_field=True, field_phase_id=1,
     The returned field carries ``cvbs_row_starts`` exactly as ``load_cvbs``
     would, and its ``dspicture`` is float64 in the normative 10-bit domain.
     """
-    params = CaptureParams.for_cvbs(system)
+    params = CaptureParams(system)
     parity = 0 if is_first_field else 1
     record = {
         "field_id": 0,

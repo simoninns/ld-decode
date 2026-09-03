@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Color bar analyzer for NTSC and PAL TBC and CVBS files.
+"""Color bar analyzer for NTSC and PAL CVBS files.
 
-Reads a .tbc file (with companion .tbc.db) or a CVBS .composite file
-(with companion .meta), detects colour bars, and measures luminance,
-chrominance amplitude, and chrominance phase for each bar against the
-expected values.
+Reads a CVBS .cvbs/.composite file (with companion .meta), detects
+colour bars, and measures luminance, chrominance amplitude, and
+chrominance phase for each bar against the expected values.
 
 NTSC: SMPTE bars (75% or 100%), absolute I/Q via the CombNTSC comb filter.
 PAL:  EBU bars (100/0/75/0 or 100/0/100/0), U/V via burst-relative
@@ -14,8 +13,7 @@ The bar region is auto-detected; if no bars are found the script reports
 which test patterns were detected and exits (use --lines to force).
 
 Usage:
-    python analysis/smpte_analyze.py cbar_he.tbc
-    python analysis/smpte_analyze.py pal-kage.tbc
+    python analysis/smpte_analyze.py cbar_he.cvbs
     python analysis/smpte_analyze.py jasonbars.composite
     python analysis/smpte_analyze.py --decode ../testdata/he010_cbar.lds
 """
@@ -34,7 +32,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from lddecode.metrics import CombNTSC
 from video_common import (
-    load_tbc, load_cvbs, detect_patterns, summarize_patterns, detect_colorbars,
+    load_cvbs, detect_patterns, summarize_patterns, detect_colorbars,
     burst_ref, demod_region, pal_fold_uv, phase_diff,
 )
 
@@ -419,20 +417,20 @@ def print_report(system, bar_results, burst_amp, burst_phase, amplitude_pct,
 # ---------------------------------------------------------------------------
 
 def decode_lds(lds_path, output_base=None, system="NTSC"):
-    """Decode an .lds (or .ldf) file to TBC using ld-decode.
+    """Decode an .lds (or .ldf) file to CVBS using ld-decode.
 
-    Returns the path to the .tbc file.
+    Returns the path to the .cvbs file.
     """
     if output_base is None:
-        # Put the TBC in a temp directory
+        # Put the CVBS output in a temp directory
         tmpdir = tempfile.mkdtemp(prefix="smpte_")
         base = os.path.splitext(os.path.basename(lds_path))[0]
         output_base = os.path.join(tmpdir, base)
 
-    tbc_path = output_base + ".tbc"
-    if os.path.exists(tbc_path) and os.path.exists(tbc_path + ".db"):
-        print(f"Using existing TBC: {tbc_path}", file=sys.stderr)
-        return tbc_path
+    cvbs_path = output_base + ".cvbs"
+    if os.path.exists(cvbs_path) and os.path.exists(output_base + ".meta"):
+        print(f"Using existing CVBS: {cvbs_path}", file=sys.stderr)
+        return cvbs_path
 
     # Find ld-decode entry point.  Set PYTHONPATH so the development tree
     # is used rather than any system-installed version.
@@ -456,10 +454,10 @@ def decode_lds(lds_path, output_base=None, system="NTSC"):
         print(f"Decode stderr:\n{result.stderr}", file=sys.stderr)
         raise RuntimeError(f"ld-decode failed (exit {result.returncode})")
 
-    if not os.path.exists(tbc_path):
-        raise FileNotFoundError(f"Decode did not produce {tbc_path}")
+    if not os.path.exists(cvbs_path):
+        raise FileNotFoundError(f"Decode did not produce {cvbs_path}")
 
-    return tbc_path
+    return cvbs_path
 
 
 # ---------------------------------------------------------------------------
@@ -468,18 +466,18 @@ def decode_lds(lds_path, output_base=None, system="NTSC"):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze colour bars from an NTSC or PAL TBC file.",
+        description="Analyze colour bars from an NTSC or PAL CVBS file.",
     )
     parser.add_argument(
-        "tbc_file",
+        "cvbs_file",
         nargs="?",
-        help="Path to .tbc file (companion .tbc.db must exist) or "
-             "CVBS .composite file (companion .meta must exist)",
+        help="Path to a CVBS .cvbs/.composite file "
+             "(companion .meta must exist)",
     )
     parser.add_argument(
         "--decode",
         metavar="LDS_FILE",
-        help="Decode an .lds/.ldf file first, then analyze the resulting TBC",
+        help="Decode an .lds/.ldf file first, then analyze the result",
     )
     parser.add_argument(
         "--decode-system",
@@ -490,7 +488,7 @@ def main():
     parser.add_argument(
         "--output-base", "-o",
         metavar="PATH",
-        help="Base path for decoded TBC (used with --decode)",
+        help="Base path for the decoded CVBS output (used with --decode)",
     )
     parser.add_argument(
         "--field", "-f",
@@ -520,20 +518,16 @@ def main():
 
     args = parser.parse_args()
 
-    # Determine TBC path
-    tbc_path = args.tbc_file
+    # Determine the CVBS path
+    cvbs_path = args.cvbs_file
     if args.decode:
-        tbc_path = decode_lds(args.decode, args.output_base, args.decode_system)
-    if tbc_path is None:
-        parser.error("Provide a .tbc file or use --decode with an .lds/.ldf file")
+        cvbs_path = decode_lds(args.decode, args.output_base, args.decode_system)
+    if cvbs_path is None:
+        parser.error("Provide a .cvbs file or use --decode with an .lds/.ldf file")
 
-    # Load
-    if tbc_path.endswith((".cvbs", ".composite")):
-        params, fields, tbc_data = load_cvbs(tbc_path)
-    else:
-        params, fields, tbc_data = load_tbc(tbc_path)
+    params, fields, cvbs_data = load_cvbs(cvbs_path)
     system = params.system
-    print(f"Input: {tbc_path}", file=sys.stderr)
+    print(f"Input: {cvbs_path}", file=sys.stderr)
     print(f"  {system}, {params.field_width}x{params.field_height}, "
           f"{params.video_sample_rate/1e6:.4f} MHz, "
           f"{len(fields)} fields", file=sys.stderr)

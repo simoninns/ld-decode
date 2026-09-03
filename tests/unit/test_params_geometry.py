@@ -265,7 +265,7 @@ def test_pal_cvbs_has_no_setup():
 )
 def test_cvbs_sample_rate_matches_the_tbc_output_rate(cvbsparams, sysparams):
     # Both tables carry the 4fsc rate, derived independently.  They have to
-    # agree, or a .cvbs and a .tbc of the same disc would be at different
+    # agree, or the .cvbs and the decoder's own raster would be at different
     # rates.  SysParams stores MHz, CVBSParams stores Hz.
     assert cvbsparams["fs_hz"] == pytest.approx(
         sysparams["outfreq"] * 1e6, rel=1e-12

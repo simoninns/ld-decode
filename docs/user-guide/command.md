@@ -3,15 +3,22 @@
 ld-decode's execution is largely controlled by a number of command line switches:
 
 ```
-ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
-                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--efm_conf {auto,on,off}] [--efm_eq_taps N] [--disable_analog_audio] [--AC3]
-                 [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
-                 [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
-                 [--deemp_low deemp_low] [--deemp_high deemp_high]
-                 [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
-                 [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
-                 [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
-                 infile outfile
+ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC]
+          [--NTSCJ] [--cvbs-encoding {CVBS_U10_4FSC,CVBS_U16_4FSC}] [-m mtf]
+          [--MTF_offset mtf_offset] [-t threads] [--demod-threads-only] [--exact-speculation]
+          [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}]
+          [--efm_eq_taps EFM_EQ_TAPS] [--disable_analog_audio] [--AC3]
+          [--start_fileloc start_fileloc] [--ignoreleadout] [--RF_TBC] [--lowband]
+          [--no_chroma_dg] [--NTSC_color_notch_filter] [--V4300D_notch_filter]
+          [--V4300D_coherent_subtract] [--rf_echo_cancel] [--rf_echo RF_ECHO]
+          [--V4300D_no_defer] [--deemp_low deemp_low] [--deemp_high deemp_high]
+          [--deemp_strength deemp_str]
+          [--wow_level_adjust_smoothing WOW_LEVEL_ADJUST_SMOOTHING]
+          [--wow_interpolation_method {linear,quadratic,cubic}] [-f FREQ]
+          [--analog_audio_frequency AFREQ] [--ntsc_audio_rate] [--video_bpf_low FREQ]
+          [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
+          [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
+          infile outfile
 ```
 
 ## Synopsis
@@ -26,11 +33,14 @@ ld-decode [OPTIONS] infile outfile
 **Required.** Path to the source file containing the raw RF capture data.
 
 ### outfile
-**Required.** Base name for destination files. The tool will create multiple output files with this base name and appropriate extensions (e.g., `.tbc`, `.tbc.json`, `.efm`, `.pcm`).
+**Required.** Base name for destination files. The tool will create multiple output files with this base name and appropriate extensions (e.g., `.cvbs`, `.meta`, `.efm`, `_audio_0.wav`).
 
 ## Options
 
-### Version Information
+### Help and Version Information
+
+#### `-h`, `--help`
+Print the option summary and exit.
 
 #### `--version`, `-v`
 Display the version number of ld-decode and exit. Does not require positional arguments.
@@ -126,6 +136,21 @@ Decode the source as NTSC-J (Japanese NTSC) format.
 ld-decode --NTSCJ input.ldf output
 ```
 
+#### `--cvbs-encoding {CVBS_U10_4FSC,CVBS_U16_4FSC}`
+Sample encoding preset for the `.cvbs` output. Both carry the same
+normative 10-bit sample domain and differ only in the container, so a
+file in either encoding measures identically.
+- **Default:** `CVBS_U10_4FSC` for PAL, `CVBS_U16_4FSC` for NTSC
+- **Note:** `CVBS_U10_4FSC` stores the 10-bit value itself in an `s16le`
+  container, keeping signed headroom below blanking; `CVBS_U16_4FSC`
+  scales it into the full 16-bit range. See
+  [File formats](../technical/file-formats.md).
+
+**Example:**
+```bash
+ld-decode --PAL --cvbs-encoding CVBS_U16_4FSC input.ldf output
+```
+
 ### Video Processing Options
 
 #### `-m mtf`, `--MTF mtf`
@@ -180,6 +205,49 @@ Use more restricted RF settings optimized for noisier disks.
 **Example:**
 ```bash
 ld-decode --lowband input.ldf output
+```
+
+### Wow Correction Options
+
+Wow is the playback speed variation of a spinning disc. It shifts sample
+timing, and because the video is FM demodulated it shifts amplitude with
+it, so the decoder corrects both: sample positions are interpolated from
+the measured line locations, and each line's level is scaled by its wow
+factor. Both options below tune that correction; the defaults suit a
+clean capture.
+
+#### `--wow_level_adjust_smoothing WOW_LEVEL_ADJUST_SMOOTHING`
+Smooth the brightness compensation over this many lines.
+- **Type:** Float (lines)
+- **Default:** 0 (no smoothing)
+- **Note:** The wow factor is derived from hsync pulse positions, so a
+  capture with noise around sync gets noisy wow estimates and therefore
+  a noisy per-line level adjustment, seen as vertical brightness banding.
+  A value above 0 low-pass filters the level adjustment across lines,
+  smoothing the banding while staying quick enough to follow real
+  (low-frequency) wow. Raise it until the banding goes; too high and
+  genuine wow-induced level variation stops being corrected.
+
+**Example:**
+```bash
+ld-decode --wow_level_adjust_smoothing 4 input.ldf output
+```
+
+#### `--wow_interpolation_method {linear,quadratic,cubic}`
+Spline used to interpolate sample positions between measured line
+locations when correcting wow.
+- **Type:** String: `linear`, `quadratic` or `cubic`
+- **Default:** `linear`
+- **Note:** `linear` treats the speed as constant across each line;
+  the higher orders fit a smoother speed curve through the line
+  locations (`cubic` with natural end conditions). Smoother is not
+  automatically better — a higher-order spline follows measurement
+  noise in the line locations as readily as it follows real wow, so
+  only move off `linear` if a capture visibly benefits.
+
+**Example:**
+```bash
+ld-decode --wow_interpolation_method cubic input.ldf output
 ```
 
 ### Video Filter Options
@@ -273,6 +341,26 @@ its satellites). Kept so existing command lines continue to work.
 Obsolete; accepted for compatibility and ignored. The spur filter no
 longer defers until sync acquisition and never forces a serial decode.
 
+#### `--no_chroma_dg`
+Disable the chroma differential gain and phase servo.
+- **Default:** Enabled (the servo runs)
+- **Note:** PAL only. The servo measures how chroma amplitude and phase
+  vary with luminance from the ITS modulated staircase in the VITS, and
+  the CVBS writer corrects both out. It is self-limiting: a disc with no
+  modulated staircase never feeds the pool, and a measured slope inside
+  the spec band is held at zero, so a conforming capture is corrected by
+  nothing. Nothing about decoding depends on it — every other servo
+  measures upstream of the correction — so disabling it changes only
+  the written chroma. Use this to see the uncorrected signal, or if a
+  capture's staircase is damaged enough to mislead the estimator. See
+  [VITS servos](../technical/vits-servos.md) for the measurement and
+  the corrector.
+
+**Example:**
+```bash
+ld-decode --PAL --no_chroma_dg input.ldf output
+```
+
 ### Deemphasis Options
 
 Video signals are typically pre-emphasized during recording and must be de-emphasized during playback.
@@ -345,7 +433,7 @@ ld-decode --analog_audio_frequency 48000 input.ldf output
 Output analog audio locked to NTSC line timing instead of the default 44100Hz.
 - **Default:** Off (analog audio is output at 44100Hz)
 - **Effect:** Produces exactly 2.8 samples per line (1470 samples/frame, 735 per field), giving a sample rate of ~44055.944Hz that stays perfectly aligned to the NTSC video timing with no drift. The default 44100Hz rate corresponds to a non-integer 1471.47 samples/frame, which slowly drifts against the video.
-- **Metadata:** The `.tbc.json` reports the resolved `sampleRate` as `44055.944055944055`.
+- **Note:** CVBS output overrides this: the specification mandates SMPTE 272M audio (48 kHz, 24-bit, synchronous to video), so the analogue audio rate is forced to 48 kHz.
 - **Note:** NTSC only. The flag is ignored (with a warning) for PAL, which is already frame-locked at 44100Hz (1764 samples/frame). Overrides `--analog_audio_frequency`.
 
 **Example:**
@@ -394,7 +482,7 @@ Time-base-correct the EFM waveform onto the video line time-base before the EFM 
 ld-decode --tbc_efm input.ldf output
 ```
 
-#### `--efm_demod`
+#### `--efm_demod`, `--efm-demod`
 Select the EFM demodulator that turns the equalised EFM waveform into `.efm` T-values.
 - **Default:** `timing`
 - **Choices:** `timing` (symbol-rate timing-recovery demodulator: per-channel-bit Mueller & Müller loop with bit-domain frame sync, sync restoration and legalised T emission), `pll` (the previous zero-crossing run-length PLL)
@@ -405,15 +493,25 @@ Select the EFM demodulator that turns the equalised EFM waveform into `.efm` T-v
 ld-decode --efm_demod pll input.ldf output
 ```
 
-#### `--efm_conf`
-Confidence-packed `.efm` output for `--tbc` mode: each byte carries the T-value in its low nibble and a 4-bit demodulator doubt in its high nibble (the byte layout of the CVBS EFM extension format; consumers separate them as `t = byte & 0x0F`, `doubt = byte >> 4` — 0 = full trust, so trusted bytes stay plain T-values). CVBS output always writes this layout — the extension format defines it — so this option only affects `--tbc` output.
-- **Default:** `auto` — **off** for `--tbc` output so the plain `.efm` keeps working with legacy tools
-- **Choices:** `auto`, `on`, `off` (`LDDECODE_EFM_EMITCONF=1`/`0` is the environment equivalent of on/off)
-- **Note:** a packed stream cannot be distinguished from a plain one by inspection, so only force `on` for `--tbc` output when the consumer knows it is getting packed data. See [EFM decoding](../technical/efm-decoding.md).
+#### `--efm_eq_taps EFM_EQ_TAPS`
+Tap count for the timing demodulator's decision-directed adaptive
+equaliser.
+- **Type:** Integer
+- **Default:** 0 (equaliser off)
+- **Range:** 0, or an odd count from 3 to 15
+- **Note:** **Experimental.** The equaliser is off by default because it
+  measured neutral-to-harmful on the validation captures: the
+  demodulator's per-bit decisions and sync flywheel already absorb
+  static linear distortion, and the remaining failures are
+  noise-dominated, where the adaptation hurts. It is kept for
+  experimentation on badly distorted discs — score the result with
+  `analysis/efm_quality.py` before trusting it. Only applies to
+  `--efm_demod timing`. See
+  [EFM decoding](../technical/efm-decoding.md) for the measurements.
 
 **Example:**
 ```bash
-ld-decode --tbc --efm_conf on input.ldf output
+ld-decode --efm_eq_taps 5 input.ldf output
 ```
 
 #### `--AC3`
@@ -421,15 +519,14 @@ Enable AC3-RF audio demodulation (NTSC only).  On AC3 LaserDiscs the
 analog right audio channel carries a QPSK signal at 2.88 MHz with Dolby
 Digital data at 288 kbaud.  With this option, ld-decode demodulates that
 signal (see `lddecode/ac3rf.py`) and writes the raw QPSK symbols to
-`output.ac3sym` (one symbol per byte, values 0-3); the number of symbols
-demodulated during each field is recorded in the field metadata
-(`ac3Symbols`, analogous to `efmTValues`).
+`output.ac3sym` (one symbol per byte, values 0-3), in disc order across
+the whole decode.
 
 The `.ac3sym` file is not playable audio by itself: framing, Reed-Solomon
 error correction and AC3 frame assembly are performed downstream by
 [decode-orc](https://github.com/simoninns/decode-orc)'s *AC3 RF Sink*
-stage, which reads the `.tbc`, its metadata, and the `.ac3sym` file and
-writes the final playable `.ac3` file.
+stage, which reads the video output, its metadata, and the `.ac3sym`
+file and writes the final playable `.ac3` file.
 
 - **Default:** Disabled
 - **Note:** Only compatible with NTSC; attempting to use with PAL will result in an error
@@ -447,6 +544,48 @@ python3 -m tests.test_ac3rf
 ```
 A quick sanity check on real output: `output.ac3sym` should grow by
 about 288,000 symbols (bytes) per second of decoded video.
+
+### RF Correction Options
+
+A reflection in the capture path — inside the player, or in the cabling
+to the capture hardware — adds a delayed copy of the RF to itself. In
+the picture this is a "ghost": a faint, displaced repeat of high
+contrast edges. The correction estimates the delay and amplitude of the
+reflection and applies the inverse filter.
+
+#### `--rf_echo_cancel`
+Detect and cancel the reflection automatically.
+- **Default:** Disabled
+- **Note:** Taps are found in the RF cepstrum and re-estimated as the
+  decode moves across the disc, and the correction is applied only when
+  it measurably reduces the echo — on a capture with no reflection it
+  is a no-op. Because the estimator carries state from block to block,
+  demodulation is no longer a pure function of the block, so this forces
+  a serial demod and gives up the `-t` speedup. If you already know the
+  taps, use `--rf_echo` instead and keep the parallel path.
+
+**Example:**
+```bash
+ld-decode --rf_echo_cancel input.ldf output
+```
+
+#### `--rf_echo RF_ECHO`
+Cancel the reflection using taps you supply.
+- **Type:** String: comma-separated `delay_samples:amplitude` pairs
+- **Default:** Empty (use `--rf_echo_cancel` for auto-detection)
+- **Note:** Delays are in input samples at the capture rate, amplitudes
+  are relative to the direct signal. Supplying taps turns the correction
+  on by itself (`--rf_echo_cancel` is not also needed) and overrides
+  auto-detection. A fixed tap list is a plain inverse filter with no
+  state, so unlike auto-detection it keeps full parallel decoding. The
+  usual way to get the numbers is to run `--rf_echo_cancel` once: on
+  the first detection it logs `RF echo detected - cancelling taps
+  17:0.110, 28:0.050`, in the format this option accepts.
+
+**Example:**
+```bash
+ld-decode --rf_echo 17:0.11,28:0.05 -t 8 input.ldf output
+```
 
 ### RF Sampling Options
 
@@ -469,11 +608,46 @@ Number of worker processes to decode fields with.
 - **Type:** Integer
 - **Default:** 0 (auto): the machine's physical cores minus 2, capped at 10
 - **Range:** 1 (serial decode) to number of CPU cores
-- **Note:** The workers are FFT-bound, so counting SMT (hyper-threading) siblings as cores oversubscribes the machine; an 8-core/16-thread CPU decodes faster with 6 workers than with 10. Output is bit-identical for any thread count.
+- **Note:** The workers are FFT-bound, so counting SMT (hyper-threading) siblings as cores oversubscribes the machine; an 8-core/16-thread CPU decodes faster with 6 workers than with 10. Output does not depend on the thread count beyond the calibration tolerance described under `--exact-speculation`.
 
 **Example:**
 ```bash
 ld-decode -t 8 input.ldf output
+```
+
+#### `--demod-threads-only`
+Keep block demodulation in threads instead of decoding whole fields in
+worker processes.
+- **Default:** Disabled (whole-field worker processes)
+- **Note:** Only meaningful alongside `-t`. Slower than the default, but
+  it avoids the per-worker memory cost (~150-200 MB each), so it is the
+  option to reach for on a memory-constrained machine. Some modes select
+  it implicitly: `--RF_TBC` and `--AC3` consume raw RF samples at write
+  time and so fall back to block-level parallelism on their own.
+
+**Example:**
+```bash
+ld-decode -t 8 --demod-threads-only input.ldf output
+```
+
+#### `--exact-speculation`
+Discard every field decoded ahead under superseded decoder parameters
+whenever calibration adjusts one.
+- **Default:** Disabled (tolerant speculation)
+- **Note:** Fields are decoded speculatively, so some are already in
+  flight when a calibration loop adopts a new value. By default a field
+  decoded under an MTF level within 0.10 of the current one is kept, as
+  are dead-band trims of the chroma differential gain — the visual
+  difference is fractions of a dB at high frequencies, and a hard flush
+  costs the whole pipeline. `--exact-speculation` keeps nothing a serial
+  decode would not have used, making the output byte-identical to `-t 1`
+  across mid-run calibration changes. Use it when comparing decodes or
+  measuring conformance; every reject is logged with its cause at DEBUG
+  level either way. No effect at `-t 1`.
+
+**Example:**
+```bash
+ld-decode -t 8 --exact-speculation input.ldf output
 ```
 
 ### Output Options
@@ -496,16 +670,6 @@ Continue decoding after detecting the lead-out section.
 **Example:**
 ```bash
 ld-decode --ignoreleadout input.ldf output
-```
-
-#### `--verboseVITS`
-Enable additional fields in the JSON metadata output.
-- **Default:** Disabled
-- **Note:** VITS (Vertical Interval Test Signals) contain technical information; this outputs more detailed data
-
-**Example:**
-```bash
-ld-decode --verboseVITS input.ldf output
 ```
 
 ### Debugging and Development Options
@@ -623,10 +787,11 @@ ld-decode --PAL --start 5000 --length 10 --write-test-ldf bug-report.ldf input.l
 
 Based on the base name provided as `outfile`, ld-decode creates several output files:
 
-- **`outfile.tbc`**: Time-base corrected video data
-- **`outfile.tbc.json`**: Frame metadata in JSON format
-- **`outfile.pcm`**: Analog audio (if enabled, one file per audio channel)
-- **`outfile.efm`**: Digital audio EFM data (if enabled)
+- **`outfile.cvbs`**: Composite video, on the 4x subcarrier lattice
+- **`outfile.meta`**: Capture metadata (SQLite), as the CVBS specification defines it
+- **`outfile.dropouts.meta`**: Dropout runs, indexed per frame (SQLite)
+- **`outfile_audio_0.wav`**: Analogue audio, 48 kHz 24-bit (if enabled)
+- **`outfile.efm`**: Digital audio EFM data, with a `.efm.meta` frame index (if enabled)
 - **`outfile.log`**: Detailed log file
 - **`outfile.tbc.ldf`**: TBC'd RF data (if `--RF_TBC` is used)
 

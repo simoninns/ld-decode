@@ -317,7 +317,7 @@ def test_the_setpoint_is_read_from_adopted_values_not_from_the_pool():
 
     A live pool median depends on how many fields are in hand, which
     differs between serial and threaded decode; reading one into a servo
-    boundary is what broke compare-pal-parallel-tbc when the inverse-MTF
+    boundary is what broke compare-pal-parallel-cvbs when the inverse-MTF
     ceiling was first written.
     """
     small = estimate_stub(pool(0.9, n=LDdecode.MTF_SERVO_MIN_SAMPLES),

@@ -13,9 +13,8 @@ height, width and pulse-to-bar ratio.  Where a signal sits on a line comes
 from analysis/vits_geometry.py; which signal it is comes from
 analysis/vits_identify.py, which consumes this.
 
-CVBS only.  The .tbc format is on its way out, so the single loader entry
-point here is video_common.load_cvbs() and a .tbc path is refused rather
-than quietly measured through a second code path.
+CVBS only: the single loader entry point here is
+video_common.load_cvbs().
 
 Discs deviate, and two of those deviations are handled here rather than left
 to the caller:
@@ -230,15 +229,10 @@ AVERAGE_COHERENCE_FLOOR_IRE = CHROMA_PRESENT
 def load(path, max_fields=None):
     """Load a CVBS capture for measurement.  Returns (params, fields, data).
 
-    A thin guard over video_common.load_cvbs(), which is the only loader
-    this module uses.  A .tbc path raises ValueError: the conformance
-    measurements are specified against the CVBS sample lattice and levels,
-    and .tbc is the format being retired.
+    A thin wrapper over video_common.load_cvbs(), which is the only
+    loader this module uses: the conformance measurements are specified
+    against the CVBS sample lattice and levels.
     """
-    if path.endswith(".tbc"):
-        raise ValueError(
-            f"vits_measure reads CVBS captures only, got a .tbc path: {path}"
-        )
     return load_cvbs(path, max_fields)
 
 # ---------------------------------------------------------------------------

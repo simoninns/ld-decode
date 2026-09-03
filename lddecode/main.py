@@ -80,26 +80,20 @@ def build_parser():
         help="source is in NTSC-J (IRE 0 black) format",
     )
     parser.add_argument(
-        "--cvbs",
-        dest="cvbs",
-        action="store_true",
-        default=True,
-        help="write spec-compliant CVBS output (<out>.cvbs/.meta and "
-        "spec WAV audio; this is the default)",
-    )
-    parser.add_argument(
-        "--tbc",
-        dest="cvbs",
-        action="store_false",
-        help="write the legacy .tbc/.tbc.db video output instead of CVBS",
-    )
-    parser.add_argument(
         "--cvbs-encoding",
         dest="cvbs_encoding",
         choices=["CVBS_U10_4FSC", "CVBS_U16_4FSC"],
         default=None,
         help="sample encoding preset for CVBS output "
         "(default: CVBS_U10_4FSC for PAL, CVBS_U16_4FSC for NTSC)",
+    )
+    # The retired output selectors.  CVBS is the only video output, so
+    # these are accepted solely to fail with an explanation: without them
+    # argparse's prefix matching would silently read "--tbc" as
+    # "--tbc_efm" and "--cvbs" as an incomplete "--cvbs-encoding".
+    parser.add_argument(
+        "--tbc", "--cvbs", dest="retired_output_flag",
+        action="store_true", default=False, help=argparse.SUPPRESS,
     )
     # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
     parser.add_argument(
@@ -187,19 +181,6 @@ def build_parser():
         "run-length PLL",
     )
     parser.add_argument(
-        "--efm_conf",
-        dest="efm_conf",
-        choices=["auto", "on", "off"],
-        default="auto",
-        help="Confidence-packed .efm output for .tbc mode (4-bit doubt, "
-        "0 = trusted, in the high nibble of each T-value byte).  'auto' "
-        "(default) and 'off' keep the plain .efm working with legacy "
-        "tools.  CVBS output always packs (the EFM extension format "
-        "defines the byte layout), so this option only affects .tbc "
-        "output.  LDDECODE_EFM_EMITCONF=1/0 is the environment "
-        "equivalent of on/off",
-    )
-    parser.add_argument(
         "--efm_eq_taps",
         dest="efm_eq_taps",
         type=int,
@@ -238,13 +219,6 @@ def build_parser():
         default=False,
         help="continue decoding after lead-out seen",
     )
-    parser.add_argument(
-        "--verboseVITS",
-        dest="verboseVITS",
-        action="store_true",
-        default=False,
-        help="Enable additional VITS metrics",
-    )
 
     parser.add_argument(
         "--RF_TBC",
@@ -268,8 +242,8 @@ def build_parser():
         action="store_false",
         default=True,
         help="Disable the chroma differential gain/phase servo (measured "
-             "from the VITS modulated staircase, corrected on the TBC and "
-             "CVBS outputs at write time; PAL only)",
+             "from the VITS modulated staircase, corrected on the CVBS "
+             "output at write time; PAL only)",
     )
 
     parser.add_argument(
@@ -471,6 +445,14 @@ def build_options(args):
     here is decided by the command line alone, before any file is opened,
     so the mapping can be checked without running a decode.
     """
+    if getattr(args, "retired_output_flag", False):
+        print(
+            "ERROR: --tbc/--cvbs have been removed; ld-decode writes "
+            "CVBS (<out>.cvbs/.meta) and nothing else",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     vid_standard = "PAL" if args.pal else "NTSC"
 
     if args.pal and (args.ntsc or args.ntscj):
@@ -513,7 +495,6 @@ def build_options(args):
         "write_pre_efm": args.prefm,
         "tbc_efm": args.tbc_efm,
         "efm_demod": args.efm_demod,
-        "efm_conf": args.efm_conf,
         "efm_eq_taps": args.efm_eq_taps,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
@@ -554,12 +535,10 @@ def build_options(args):
     if args.lowband:
         extra_options["lowband"] = True
 
-    if args.cvbs:
-        extra_options["output_cvbs"] = True
-        if args.ntscj:
-            extra_options["cvbs_black_level"] = 240
-        if args.cvbs_encoding:
-            extra_options["cvbs_encoding"] = args.cvbs_encoding
+    if args.ntscj:
+        extra_options["cvbs_black_level"] = 240
+    if args.cvbs_encoding:
+        extra_options["cvbs_encoding"] = args.cvbs_encoding
 
     DecoderParamsOverride = {}
     if args.vbpf_low is not None:
@@ -709,9 +688,6 @@ def main(args=None):
     if args.write_test_ldf is not None:
         start_sample_position = int(ldd.fdoffset)
 
-    if args.verboseVITS:
-        ldd.verboseVITS = True
-
     done = False
 
     def cleanup():
@@ -724,15 +700,10 @@ def main(args=None):
             f = ldd.readfield()
         except KeyboardInterrupt as kbd:
             print("\nTerminated, exiting", file=sys.stderr)
-            # cleanup() -> ldd.close() finalizes and flushes the .tbc.db;
-            # confirm the interrupted decode's metadata was saved.
+            # cleanup() -> ldd.close() finalises the CVBS file and its
+            # .meta sidecar, so the interrupted decode leaves a readable
+            # (if short) capture behind.
             cleanup()
-            if not ldd.output_cvbs and ldd.fields_written:
-                print(
-                    f"{outname}.tbc.db written and flushed to disk "
-                    f"({ldd.fields_written} fields).",
-                    file=sys.stderr,
-                )
             sys.exit(1)
         except Exception as err:
             print(

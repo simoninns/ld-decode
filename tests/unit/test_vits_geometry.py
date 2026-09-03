@@ -63,7 +63,7 @@ def test_pal_row_offsets_are_not_a_multiple_of_the_row_width():
 
 
 def test_a_field_without_row_starts_is_refused():
-    params = CaptureParams.for_cvbs("PAL")
+    params = CaptureParams("PAL")
     field = VideoField(np.zeros(params.field_samples), 0, params,
                        {"field_id": 0, "is_first_field": True,
                         "field_phase_id": 1})

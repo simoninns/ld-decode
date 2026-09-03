@@ -23,10 +23,8 @@ from .dsp import (
     n_orgt,
     n_ornotrange_scalar,
     nb_absmax,
-    nb_max,
     nb_mean,
     nb_median,
-    nb_min,
     nb_round,
     nb_std,
     phase_distance,
@@ -184,10 +182,9 @@ def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0):
     blanking-level chrominance and is never rotated, which is what zero
     differential gain and phase mean.
 
-    Applied at write time only (downscale_cvbs for the CVBS output,
-    apply_chroma_dg_correction_output for the TBC output): every servo
-    measures the uncorrected signal, so none of them closes a loop
-    through this.
+    Applied at write time only (downscale_cvbs, on the 4fsc lattice):
+    every servo measures the uncorrected signal, so none of them closes
+    a loop through this.
 
     hz_samples is the demodulated stream in Hz on the 4fsc lattice;
     returns the corrected stream, same dtype domain (float).
@@ -197,73 +194,6 @@ def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0):
     ire = (np.asarray(hz_samples, dtype=np.float64) - ire0) / hz_ire
     ire = _correct_chroma_vs_luma(ire, rf.SysParams["outfreq"], slope, phase)
     return (ire * hz_ire + ire0).astype(np.float32)
-
-
-def apply_chroma_dg_correction_output(picture, field, slope, phase=0.0):
-    """The same correction on output-unit (uint16 TBC) samples.
-
-    The TBC picture is downscaled on worker threads before the servo's
-    estimate for the field is even pooled, so the correction cannot live
-    in downscale(); it is applied here, by the parent at write time, to
-    a copy - field.dspicture stays uncorrected and every servo keeps
-    measuring the raw decode.
-    """
-    samples = np.asarray(picture)
-    if samples.dtype != np.uint16:
-        samples = np.frombuffer(samples, dtype=np.uint16)
-    ire = field.output_to_ire(samples.astype(np.float64))
-    ire = _correct_chroma_vs_luma(
-        ire, field.rf.SysParams["outfreq"], slope, phase)
-    out = ((ire - field.rf.DecoderParams["vsync_ire"]) * field.out_scale
-           + field.rf.SysParams["outputZero"] + 0.5)
-    return np.clip(out, 0, 65535).astype(np.uint16)
-
-
-def chroma_dg_output_key(rf, slope, phase):
-    """Everything apply_chroma_dg_correction_output's result depends on
-    beyond the picture: the servo's estimate and the AGC's vsync level
-    (out_scale and outputZero are per-system constants).  A worker
-    stamps the key it corrected under on the field (chroma_dg_applied);
-    the writer compares it with the current one."""
-    return (float(slope), float(phase), float(rf.DecoderParams["vsync_ire"]))
-
-
-def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None):
-    """The TBC picture to write for a field under the current chroma DG
-    estimate, applying apply_chroma_dg_correction_output only when the
-    field does not already carry it.
-
-    A field decoded in a worker process may arrive with `picture`
-    already corrected (field.chroma_dg_applied records the key it was
-    corrected under, see chroma_dg_output_key); that copy is used as is
-    while the key is still current, and discarded for a fresh correction
-    of the raw field.dspicture when the servo has since adopted new
-    values - the same computation the serial decode performs at this
-    point, so the output does not depend on which path produced it.
-
-    tolerance, a (slope, phase) pair in per-IRE units, is the tolerant
-    speculation mode's allowance: a correction whose slope and phase are
-    each within it of the current estimate (and whose vsync level is
-    the same) is kept rather than redone, as an in-flight field decoded
-    under a slightly stale MTF level is.  None demands the exact key.
-    Returns picture itself when no correction applies."""
-    if field is None:
-        return picture
-    key = chroma_dg_output_key(field.rf, slope, phase)
-    applied = getattr(field, "chroma_dg_applied", None)
-    if applied is not None and applied != key:
-        close_enough = (
-            tolerance is not None
-            and applied[2] == key[2]
-            and abs(applied[0] - key[0]) <= tolerance[0]
-            and abs(applied[1] - key[1]) <= tolerance[1]
-        )
-        if not close_enough:
-            picture = field.dspicture
-            applied = None
-    if applied is None and (slope != 0.0 or phase != 0.0):
-        picture = apply_chroma_dg_correction_output(picture, field, slope, phase)
-    return picture
 
 
 def field_output_view(field):
@@ -724,14 +654,6 @@ class Field:
 
         # there isn't a valid range to find, or it's impossibly short
         return None, None
-
-    def getVBlankLength(self, isFirstField):
-        core = self.rf.SysParams["numPulses"] * 3 * 0.5
-
-        if self.rf.system == "NTSC":
-            return core + 1
-        else:
-            return core + 0.5 + (0 if isFirstField else 1)
 
     def processVBlank(self, validpulses, start, limit=None):
 
@@ -1352,20 +1274,15 @@ class Field:
             # Either analog audio is disabled, or we're using hsync-locked sampling
             audio_offset = 0
 
-        audio_rv = {}
-        downscale_audio(
+        self.dsaudio, _ = downscale_audio(
             self.data["audio"],
             lineinfo,
             self.rf,
             self.linecount,
             audio_offset,
             audio,
-            audio_rv,
             bits=audio_bits,
         )
-
-        self.dsaudio = audio_rv["dsaudio"]
-        self.audio_next_offset = audio_rv["audio_next_offset"]
 
         return self.dsaudio
 
@@ -1518,14 +1435,6 @@ class Field:
 
         self.sync_confidence = min(self.sync_confidence, newconf)
         return int(self.sync_confidence)
-
-    def get_vsync_area(self):
-        """ return beginning, length in lines, and end of vsync area """
-        vsync_begin = int(self.linelocs[0])
-        vsync_end_line = int(self.getVBlankLength(self.isFirstField) + 0.6)
-        vsync_end = int(self.linelocs[vsync_end_line]) + 1
-
-        return vsync_begin, vsync_end_line, vsync_end
 
     def get_vsync_lines(self):
         rv = []
@@ -2120,13 +2029,6 @@ class FieldNTSC(Field):
         )
 
         return dsout, dsaudio, dsefm
-
-    def apply_offsets(self, linelocs, phaseoffset, picoffset=0):
-        return (
-            np.array(linelocs)
-            + picoffset
-            + (phaseoffset * (self.rf.freq / self.rf.SysParams["outfreq"]))
-        )
 
     @profile
     def process(self):

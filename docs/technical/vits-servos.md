@@ -159,13 +159,10 @@ quadrature phase against luminance (the zones share one line's
 referred to the blanking-level zone); the fitted fractional gain slope
 per IRE and phase slope in degrees per IRE are pooled and adopted by
 `checkChromaDG()` under the usual dead-band and rate limit into
-`DecoderParams["chroma_dg_slope"]` and `["chroma_dg_phase"]`, and the
-write-time corrector nulls both on both outputs — `downscale_cvbs()`
-for the CVBS path, `apply_chroma_dg_correction_output()` in the
-parent's `_writeout_data()` for the TBC path (the TBC picture is
-downscaled on worker threads before the estimate exists, so the
-correction is applied to a write-time copy and `dspicture` keeps the
-raw decode). Measured on DD86-DS2 CommunityNorth frames 3000–3100:
+`DecoderParams["chroma_dg_slope"]` and `["chroma_dg_phase"]`, and
+`apply_chroma_dg_correction()` nulls both at the end of
+`downscale_cvbs()`, on the composite the writer is about to emit.
+Measured on DD86-DS2 CommunityNorth frames 3000–3100:
 pooled differential gain 0.366 → 0.031, chroma flat 17.9–18.4 IRE
 across the staircase, luminance levels unchanged.
 

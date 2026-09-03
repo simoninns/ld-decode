@@ -262,7 +262,7 @@ Every test carries exactly one of `unit` or `functional`, plus an optional famil
 | `unit` | Fast, hermetic; no filesystem, network, subprocess, or clock |
 | `functional` | Needs real capture data, a subprocess, or a full decode run |
 | `dsp` | Filter, demodulation and signal-maths tests |
-| `format` | File-format tests (`.lds`, `.ldf`, `.cvbs`, `.tbc`, metadata) |
+| `format` | File-format tests (`.lds`, `.ldf`, `.cvbs`, metadata) |
 | `decode` | Field/frame assembly, sync and TBC logic |
 | `parallel` | Threading, block-cache and speculation |
 | `slow` | Functional tests exceeding roughly 60 s |
@@ -401,11 +401,9 @@ Decode outputs land in `build/testout/`; inspect them there when a comparison fa
 
 | Test group | What it establishes |
 |------------|---------------------|
-| `decode-ntsc-basic`, `decode-pal-basic` | A real capture decodes to `.tbc` without error |
-| `decode-*-parallel` + `compare-*-parallel-*` | Threaded `.tbc` decode is **byte-identical** to serial, across video, analogue audio and EFM |
-| `decode-pal-cvbs-parallel` + `compare-pal-cvbs-parallel-*` | The same for the CVBS writer, over the harder non-line-locked PAL lattice: samples, metadata sidecar, EFM and WAV audio |
+| `decode-ntsc-basic`, `decode-pal-basic` | A whole real capture decodes without error |
+| `decode-*-parallel` + `compare-*-parallel-*` | Threaded decode is **byte-identical** to serial, across the `.cvbs` samples, the `.meta` sidecar, the EFM and the WAV audio — PAL included, over the harder non-line-locked lattice |
 | `decode-*-cvbs` + `verify-*-cvbs` | `.cvbs` output conforms to the format specification |
-| `roundtrip-*-orc` | Rendering CVBS and TBC through the same chroma decoder agrees (skips without `orc-cli`) |
 | `analyze-*-patterns`, `analyze-ntsc-ntc7` | Expected VITS/test patterns are present and measurable |
 | `identify-*-vits`, `conformance-*-vits` | The VITS a disc carries are found where it carries them, and every element measures within its specification tolerance plus the decoder allowance |
 | `decode-<cut>-cvbs` + `conformance-<cut>-vits` (label `vits`) | The same, across six discs at three radii each plus two whole captures, so a decoder tuned to one part of one disc cannot pass and no gate rests on a single disc image. See [docs/technical/vits-conformance.md](docs/technical/vits-conformance.md) |
@@ -461,7 +459,7 @@ def test_pal_lattice_slips_four_samples_per_frame():
 ```cmake
 add_test(
     NAME decode-pal-cvbs
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --cvbs --PAL -l 6
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --PAL -l 6
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

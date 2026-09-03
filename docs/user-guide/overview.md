@@ -1,6 +1,6 @@
 # Overview
 
-The purpose of ld-decode is to take sampled RF information from a captured LaserDisc and convert it into a TBC (Time Base Corrected) file along with a SQLite metadata file that details frame-by-frame the contents of the TBC.
+The purpose of ld-decode is to take sampled RF information from a captured LaserDisc and convert it into a CVBS file (composite video, time-base corrected onto the 4x subcarrier lattice) along with a SQLite metadata file that details frame-by-frame the contents of the capture.
 
 RF information is captured directly from the laser pick-up inside the LaserDisc player.  This is effectively an optical copy of the LaserDisc's track which is the 14km spiral of information encoded into the disc's surface including all the scratches, damage and other degradation.  In addition, the spinning LaserDisc (like all physical media) suffers from jittering, loss of tracking, skipping and a number of other issues that can affect the quality of the capture.
 
@@ -36,7 +36,7 @@ Will show something similar to the following output:
 
 ```
 Frame 1/1: File Frame 600: CAV Frame #318                                       
-Completed: saving JSON and exiting.
+Completed, exiting.
 Took 18.82 seconds to decode 1 frames (2.67 FPS post-setup)
 ```
 
@@ -53,14 +53,14 @@ ld-decode ./input/GGV1069_CAV_NTSC_side1_dup1_2019-09-12_21-11-38.ldf ./output/g
 
 Unable to determine start of field - dropping field
 Frame 1/1: File Frame 282: CAV Lead In                                          
-Completed: saving JSON and exiting.
+Completed, exiting.
 Took 2.70 seconds to decode 1 frames (10.50 FPS post-setup)
 
 
 ld-decode ./input/GGV1069_CAV_NTSC_side1_dup1_2019-09-12_21-11-38.ldf ./output/ggv1069 --start 283 --length 1
 
 Frame 1/1: File Frame 283: CAV Frame #1                                         
-Completed: saving JSON and exiting.
+Completed, exiting.
 Took 2.71 seconds to decode 1 frames (11.57 FPS post-setup)
 ```
 
@@ -71,14 +71,16 @@ To now decode the entire contents of the disc we simply remove the --length swit
 That's it!  Once the command has completed you will see a number of files created:
 
 ```
-ggv1069.efm    - The EFM data (if present)
-ggv1069.log    - ld-decodes log output
-ggv1069.pcm    - The analogue audio track
-ggv1069.tbc    - The actual TBC video file
-ggv1069.tbc.db - The SQLite metadata
+ggv1069.cvbs          - The composite video file
+ggv1069.meta          - The SQLite metadata
+ggv1069.dropouts.meta - The dropout runs, indexed per frame
+ggv1069_audio_0.wav   - The analogue audio track
+ggv1069.efm           - The EFM data (if present)
+ggv1069.efm.meta      - The EFM stream's per-frame index
+ggv1069.log           - ld-decodes log output
 ```
 
-Once you have a TBC file it's time to head over to the [Decode Orc project](https://simoninns.github.io/decode-orc-docs){target="_blank"} for instructions on how to change your TBC back into usable video and audio.
+Once you have a CVBS file it's time to head over to the [Decode Orc project](https://simoninns.github.io/decode-orc-docs){target="_blank"} for instructions on how to change your composite video back into usable video and audio.
 
 # Next steps
 

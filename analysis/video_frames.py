@@ -1,10 +1,10 @@
-"""Notebook-friendly frame access for .tbc and CVBS .composite files.
+"""Notebook-friendly frame access for CVBS .cvbs/.composite files.
 
-Built on video_common's parsers (load_tbc / load_cvbs): loads a group of
-frames from either container, NTSC or PAL, and presents them as numpy
-arrays with the subcarrier/burst bookkeeping needed for comb filter
-experiments.  All test-pattern detection and VITS measurement helpers
-from video_common are re-exported so one import serves a whole notebook.
+Built on video_common's parser (load_cvbs): loads a group of frames,
+NTSC or PAL, and presents them as numpy arrays with the subcarrier/burst
+bookkeeping needed for comb filter experiments.  All test-pattern
+detection and VITS measurement helpers from video_common are re-exported
+so one import serves a whole notebook.
 
 Usage from a notebook:
 
@@ -12,7 +12,7 @@ Usage from a notebook:
     sys.path.insert(0, "/home/cpage/ld-decode/chad-cutdown/analysis")
     from video_frames import load_frames
 
-    frames = load_frames("cbar_he.tbc", n_frames=4)      # or .composite
+    frames = load_frames("cbar_he.cvbs", n_frames=4)    # or .composite
     fr = frames[0]
 
     fr.first.ire                  # field picture, 2D float IRE
@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from video_common import (  # noqa: F401  (re-exports for notebook use)
     CaptureParams, VideoField,
-    load_tbc, load_cvbs, load_video,
+    load_cvbs, load_video,
     detect_patterns, summarize_patterns, detect_colorbars,
     burst_ref, demod_region, line_segment_ire, average_line_ire,
     pal_fold_uv, phase_diff, segment_freq_pp, sine_fit_pp,
@@ -344,10 +344,9 @@ def _pair_frames(fields, start_frame=0, n_frames=None):
 
 
 def load_frames(path, n_frames=None, start_frame=0):
-    """Load a group of frames from a .tbc or CVBS .composite file.
+    """Load a group of frames from a CVBS .cvbs/.composite file.
 
-    path:        .tbc (companion .tbc.db), .composite (companion .meta),
-                 or a basename of either.
+    path:        .cvbs or .composite (companion .meta), or the basename.
     n_frames:    frames to return (default: all available).
     start_frame: first frame to return, counted in frame pairs from the
                  start of the file.
@@ -370,11 +369,11 @@ def frames_from_decoded(decoded_fields, black_ire=None):
     since it reads the fields before they are written.  None entries and
     fields without a picture are skipped.
 
-    Capture parameters are derived exactly as the .tbc.db capture row
-    would be (decoder.build_sqlite_metadata): geometry and measurement
-    windows from SysParams at the 4fsc output rate, levels via
-    hz_to_output.  black_ire sets black_16b_ire only (default 7.5 NTSC,
-    0 PAL).
+    Capture parameters are derived from the decoder itself: geometry and
+    measurement windows from SysParams at the 4fsc output rate, levels
+    via hz_to_output.  The samples are the decoder's own 16-bit output
+    domain rather than a CVBS file's 10-bit one, so sample_encoding is
+    None.  black_ire sets black_16b_ire only (default 7.5 NTSC, 0 PAL).
 
     Each wrapped field keeps the full decoder Field reachable as
     .decoded (for linelocs, demod data, draw_field, plotline, ...).
@@ -389,7 +388,7 @@ def frames_from_decoded(decoded_fields, black_ire=None):
         black_ire = 7.5 if system == "NTSC" else 0.0
 
     spu = f0.rf.SysParams["outfreq"]
-    badj = -1.4  # burst/active window adjustment, as in the .tbc.db writer
+    badj = -1.4  # burst/active window adjustment
     p = CaptureParams.__new__(CaptureParams)
     p.system = system
     p.field_width = f0.rf.SysParams["outlinelen"]
@@ -403,7 +402,7 @@ def frames_from_decoded(decoded_fields, black_ire=None):
     p.active_video_end = int(round(f0.rf.SysParams["activeVideoUS"][1] * spu + badj))
     p.colour_burst_start = int(round(f0.rf.SysParams["colorBurstUS"][0] * spu + badj))
     p.colour_burst_end = int(round(f0.rf.SysParams["colorBurstUS"][1] * spu + badj))
-    p.capture_id = None
+    p.sample_encoding = None
     p.out_scale = (p.white_16b_ire - p.blanking_16b_ire) / 100.0
     p.field_samples = p.field_width * p.field_height
 

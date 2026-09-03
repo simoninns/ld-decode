@@ -33,8 +33,7 @@ marginal disc.
 
 | File | Contents |
 |------|----------|
-| `.efm` | One signed byte per T-value (values 3–11), in disc order. Written in both TBC and CVBS output modes; in CVBS mode a `.efm.meta` SQLite sidecar additionally indexes the stream by frame (see the CVBS EFM extension format). |
-| `.efm` (confidence-packed) | With confidence output enabled (always, for CVBS output; `--efm_conf on` for TBC), each `.efm` byte instead carries the T-value in its low nibble and a 4-bit doubt (0 = trusted) in its high nibble, the byte layout the CVBS EFM extension format defines — see below. Same file, same length; consumers separate the fields with a mask and a shift. |
+| `.efm` | One byte per T-value, in disc order: the T-value (3–11) in the low nibble and a 4-bit doubt (0 = trusted) in the high nibble, the byte layout the CVBS EFM extension format defines — see below. A `.efm.meta` SQLite sidecar indexes the stream by frame. |
 | `.prefm` | The filtered EFM waveform before the PLL (int16 samples), written with `--preEFM`; for debugging and cross-capture waveform research. |
 
 ## Defaults (no flags needed)
@@ -74,7 +73,6 @@ The timing demodulator's own hooks are in its section below.
 | `LDDECODE_EFM_FREQSTEPMUL` | `20` | Frequency-step multiplier while acquiring |
 | `LDDECODE_EFM_LOCKERRFRAC` | `0.125` | \|phase error\| < frac·period counts as "in lock" |
 | `LDDECODE_EFM_LOCKTHRESH` | `24` | Consecutive in-lock edges before declaring lock |
-| `LDDECODE_EFM_EMITCONF` | unset | `1`/`0` forces confidence-packed `.efm` output on/off for TBC output (same as `--efm_conf on`/`off`; CVBS output is always packed) |
 | `LDDECODE_TBC_EFM` | unset | `1` enables EFM time-base correction (same as `--tbc_efm`) |
 
 The equalisation front end has sweep hooks of its own (used for filter-tuning
@@ -124,9 +122,8 @@ takes one soft decision per channel bit:
    preserved, confidence capped low) exactly as a hardware transport
    regenerates sync, which keeps downstream sync-scanning decoders framed;
    damage that cannot be rewritten to legal run lengths is left visible.
-   Up to one frame of T-values waits for its closing sync, so the decoder
-   drains the demodulator at close (TBC mode; the tail lands after the
-   last field's `efmTValues` count and belongs to no field).
+   Up to one frame of T-values waits for its closing sync; the stream's
+   final frame can never be validated, so that tail is not emitted.
 
 On clean captures both demodulators frame essentially perfectly; the timing
 demodulator's advantage appears on noisy and marginal material, where per-bit
@@ -167,7 +164,7 @@ EFM soft-sample stream is simply not that signal. The flag remains for
 experimentation on badly distorted discs; check the oracle's scores before
 trusting its output.
 
-## Confidence-packed `.efm` output (`--efm_conf`)
+## Confidence-packed `.efm` output
 
 Legal T-values are 3–11, so they only ever occupy the low nibble of an
 `.efm` byte. With confidence output enabled, the high nibble carries the
@@ -182,22 +179,13 @@ Doubt 0 means full trust — so a fully trusted run packs to its plain
 T-value — and values approaching 15 mean the run is a likely Reed-Solomon
 erasure candidate for the downstream decoder.
 
-Whether the high nibble is populated follows the output mode:
-
-- **CVBS output: always.** The CVBS EFM extension format defines every
-  `.efm` byte this way, so there is nothing to configure and nothing to
-  declare (`--efm_conf` is ignored, with a warning if `off` was asked
-  for). A producer with nothing to doubt simply writes zero high nibbles,
-  which is byte-identical to a plain T-value stream.
-- **TBC output: off by default**, so the plain `.efm` keeps working
-  byte-for-byte with legacy tools (`ld-process-efm` and friends).
-  Forcing it on (`--efm_conf on`, or `LDDECODE_EFM_EMITCONF=1`) is for
-  consumers that know they are getting a packed stream. Because the high
-  nibble stores doubt, a confidence-aware consumer reads a legacy plain
-  `.efm` correctly as fully trusted, and a legacy tool fed a packed
-  stream only sees out-of-range bytes on the runs the demodulator
-  actually doubted — but a packed stream cannot be told apart from a
-  plain one by inspection, so only force it on when the consumer knows.
+The high nibble is always populated: the CVBS EFM extension format
+defines every `.efm` byte this way, so there is nothing to configure and
+nothing to declare. A producer with nothing to doubt simply writes zero
+high nibbles, which is byte-identical to a plain T-value stream — so a
+confidence-aware consumer reads a legacy plain `.efm` correctly as fully
+trusted, and a legacy tool fed this stream only sees out-of-range bytes
+on the runs the demodulator actually doubted.
 
 What the confidence measures:
 
@@ -264,12 +252,13 @@ LaserDisc digital audio carries CD-format EFM per IEC 60857 section 10), a
 ```bash
 python analysis/efm_quality.py out.efm \
     --min-sync-rate 0.99 --min-frame-588 0.98 --max-invalid-t 0
-# confidence-packed stream (the CVBS-mode default): add --packed
+# a stream written by ld-decode is confidence-packed: add --packed
 python analysis/efm_quality.py out.efm --packed --min-frame-588 0.98
 ```
 
-The encoding cannot be detected from the bytes, so pass `--packed` exactly
-when the decode wrote packed output (CVBS default, or `--efm_conf on`).
+The encoding cannot be detected from the bytes, so pass `--packed` for any
+`.efm` ld-decode wrote, and leave it off only for a plain T-value stream
+from another producer.
 
 The final line is `EFM QUALITY: PASS (...)` or `EFM QUALITY: FAIL (...)`; with
 no threshold flags the run is informational. CTest gates every EFM-bearing
@@ -296,11 +285,11 @@ results against them are in the next section.
 
 | Capture | System | T-values | sync_rate | frame_588_fraction |
 |---------|--------|---------:|----------:|-------------------:|
-| pal/jason-testpattern (TBC) | PAL | 144,675 | 1.000000 | 1.000000 |
-| ntsc/issue176 (TBC) | NTSC | 118,082 | 1.000021 | 1.000000 |
-| ntsc/ve-snw-cut (TBC) | NTSC | 868,290 | 0.998021 | 0.996477 |
-| ntsc/ve-snw-cut (CVBS, 6 frames) | NTSC | 179,872 | 0.996048 | 0.988372 |
-| ntsc/ve-monitor (CVBS) | NTSC | 2,637,423 | 0.999381 | 0.991516 |
+| pal/jason-testpattern | PAL | 108,577 | 0.999998 | 1.000000 |
+| ntsc/issue176 | NTSC | 118,082 | 1.000021 | 1.000000 |
+| ntsc/ve-snw-cut | NTSC | 868,290 | 0.998021 | 0.996477 |
+| ntsc/ve-snw-cut (6 frames) | NTSC | 179,872 | 0.996048 | 0.988372 |
+| ntsc/ve-monitor | NTSC | 2,637,423 | 0.999381 | 0.991516 |
 | radius/dolby-surround-side1-inner | NTSC | 600,441 | 0.998778 | 0.991223 |
 | radius/dolby-surround-side1-middle | NTSC | 570,482 | 0.998712 | 0.991618 |
 | radius/dolby-surround-side1-outer | NTSC | 600,980 | 0.997639 | 0.990400 |
@@ -333,9 +322,8 @@ discs.
 
 ### Timing-recovery demodulator validation (the default switch)
 
-The same captures decoded with `--efm_demod timing` (TBC mode; sync
-restoration and end-of-stream flush included). `frame_588_fraction` shown
-as PLL → timing:
+The same captures decoded with `--efm_demod timing` (sync restoration
+included). `frame_588_fraction` shown as PLL → timing:
 
 | Capture | System | PLL | timing |
 |---------|--------|----:|-------:|

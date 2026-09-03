@@ -1,6 +1,6 @@
 """Coherent-average NTC-7 multiburst level measurement.
 
-Usage: python3 analysis/mb_measure.py <file.tbc> [max_frames]
+Usage: python3 analysis/mb_measure.py <file.cvbs> [max_frames]
 
 Collects up to 10 same-parity fields carrying the 6-packet NTC-7 combination
 multiburst, coherently averages the line-20 waveform (killing random noise so

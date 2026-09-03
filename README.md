@@ -52,7 +52,7 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 # The decoding tool-chain
 
 > [!IMPORTANT]  
-> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have a decoded TBC file you will need Decode-Orc in order to process this and turn it back into video, sound, etc.
+> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have a decoded CVBS file you will need Decode-Orc in order to process this and turn it back into video, sound, etc.
 >
 > Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
@@ -81,37 +81,29 @@ memory (~150–200 MB per worker process).  Steady-state throughput on a
 (≈5.7×).  Modes that consume raw RF samples at write time (`--RF-TBC`,
 AC3) automatically use block-level parallelism instead (~4×);
 `--demod-threads-only` keeps everything in threads (slower, lightest
-on memory).  The TBC output's chroma differential-gain correction is
-applied by the workers under the servo estimate current at dispatch
-(the writer re-applies it only if the estimate has since moved), so the
-committing thread stays light.  PAL CVBS output resamples each field
-at write time (its burst lock runs in commit order), so workers ship
-the demodulated video back with the field (~4 MB each).  Everything
-that happens to a field after it commits - the EFM demodulation, the
-`.tbc.db` row, CVBS frame assembly and the file writes - runs on a
-separate output thread that trails the committer by up to 16 fields,
-each field carrying a snapshot of the decoder parameters it committed
-under, so the output is the same bytes the inline write would have
-produced; a stale chroma DG correction is redone on a small pool
-ahead of that thread, and the two fields of a PAL CVBS frame resample
-concurrently.
+on memory).  PAL output resamples each field at write time (its burst
+lock runs in commit order), so workers ship the demodulated video back
+with the field (~4 MB each).  Everything that happens to a field after
+it commits - the EFM demodulation, CVBS frame assembly and the file
+writes - runs on a separate output thread that trails the committer by
+up to 16 fields, each field carrying a snapshot of the decoder
+parameters it committed under, so the output is the same bytes the
+inline write would have produced, and the two fields of a PAL frame
+resample concurrently.
 
 By default, minor MTF calibration drift is tolerated: fields decoded
 ahead under an MTF level within 0.10 of the current one are kept
 (the visual difference of a dead-band step is fractions of a dB at
-high frequencies), and likewise a chroma DG correction applied by a
-worker within two servo dead-bands of the current estimate (~1.5% of
-chroma gain at 100 IRE).  `--exact-speculation` instead discards everything
+high frequencies).  `--exact-speculation` instead discards everything
 decoded under old parameters, keeping the output bit-exact with `-t 1`
 even across mid-run calibration changes.  Every speculation reject and
-parameter event is recorded with its cause in the `speculation_log`
-table of the `.tbc.db` (and as DEBUG lines in the decode log).
+parameter event is recorded with its cause as a DEBUG line in the
+decode log.
 
-## CVBS output mode
+## CVBS output
 
-ld-decode writes spec-compliant CVBS output by default (see
-`cvbs-file-format-specification/`); `--tbc` selects the legacy
-`.tbc`/`.tbc.db` video output instead:
+ld-decode writes spec-compliant CVBS output (see
+`cvbs-file-format-specification/`), and nothing else:
 
 - `<out>.cvbs` — sample data in whole frames (NTSC: 477,750
   samples/frame; PAL: 709,379), ld-decode line convention
@@ -132,8 +124,8 @@ ld-decode writes spec-compliant CVBS output by default (see
 
 Note that **PAL 4fsc is not line-locked**: a line is 1135.0064 samples
 and the sampling lattice slips 4 samples per frame, so the PAL
-`.cvbs` is produced by a separate non-orthogonal resampler and its
-timing differs fundamentally from the line-locked `.tbc` raster.  PAL
+`.cvbs` is produced by a separate non-orthogonal resampler rather than
+the orthogonal NTSC path.  PAL
 output is burst-anchored: the lattice constraint (sampling at 45° steps
 to +U) is defined mod 90°, and 90° of subcarrier is exactly one lattice
 sample, so the anchor is a global sub-sample time shift that tracks the
@@ -158,5 +150,5 @@ You can also contribute to the project documentation, see the [docs/ directory i
 
 The source is split roughly into two sections:
 
-- ld-decode - The main Python application responsible for decoding lds/ldf LaserDisc RF samples into tbc files (time-base corrected framed video) and generating the initial metadata
+- ld-decode - The main Python application responsible for decoding lds/ldf LaserDisc RF samples into CVBS files (time-base corrected composite video) and generating the initial metadata
 - scripts (under the scripts/ directory) - Various scripts to assist with development and decoding

@@ -8,8 +8,8 @@ The FM channel scales and rotates recovered chrominance by the luminance
 it rides on (differential gain and differential phase) while leaving the
 luminance staircase itself linear, so the correction is a luma-controlled
 complex chroma gain applied to the composite outputs: measured from the
-ITS modulated staircase, nulled at write time on both the TBC and CVBS
-paths, gain anchored at the 50 IRE calibration pedestal and phase at
+ITS modulated staircase, nulled at write time on the CVBS output,
+gain anchored at the 50 IRE calibration pedestal and phase at
 blanking (the burst's level, so the hue reference never rotates).  These
 tests cover the correction's arithmetic, the staircase measurement, and
 the servo that connects them.
@@ -23,8 +23,7 @@ import pytest
 
 from lddecode import utils_logging as logs
 from lddecode.decoder import LDdecode, measure_vits_dg_staircase
-from lddecode.field import (CHROMA_DG_ANCHOR_IRE, apply_chroma_dg_correction,
-                            apply_chroma_dg_correction_output)
+from lddecode.field import CHROMA_DG_ANCHOR_IRE, apply_chroma_dg_correction
 
 pytestmark = [pytest.mark.unit]
 
@@ -457,59 +456,6 @@ def test_a_wild_phase_tilt_is_rejected_by_the_measurement():
     line = its_line_ire(lambda l: 18.0,
                         chroma_phase_of=lambda l: np.deg2rad(0.8 * l))
     assert measure_vits_dg_staircase(field_stub(line)) is None
-
-
-# ---------------------------------------------------------------------------
-# The TBC write-time path
-# ---------------------------------------------------------------------------
-
-OUTPUT_ZERO = 1024
-OUT_SCALE = 350.0
-VSYNC_IRE = -40.0
-
-
-def output_field_stub(ire_samples):
-    picture = np.clip((ire_samples - VSYNC_IRE) * OUT_SCALE
-                      + OUTPUT_ZERO + 0.5, 0, 65535).astype(np.uint16)
-    field = types.SimpleNamespace(
-        out_scale=OUT_SCALE,
-        rf=types.SimpleNamespace(
-            SysParams={"outfreq": OUTFREQ, "outputZero": OUTPUT_ZERO},
-            DecoderParams={"vsync_ire": VSYNC_IRE}),
-    )
-    field.output_to_ire = (
-        lambda x: (x - OUTPUT_ZERO) / OUT_SCALE + VSYNC_IRE)
-    return picture, field
-
-
-def test_the_output_unit_wrapper_matches_the_hz_corrector():
-    hz = composite_hz(LEVELS, ZONE,
-                      lambda l: 20.0 * (1 + DOMESDAY_SLOPE * l),
-                      lambda l: np.deg2rad(DOMESDAY_PHASE * l))
-    ire = (hz - IRE0) / HZ_IRE
-    picture, field = output_field_stub(ire)
-    out = apply_chroma_dg_correction_output(picture, field,
-                                            DOMESDAY_SLOPE, DOMESDAY_PHASE)
-    assert out.dtype == np.uint16
-    back = field.output_to_ire(out.astype(np.float64))
-    hz_back = back * HZ_IRE + IRE0
-    want = 20.0 * (1 + DOMESDAY_SLOPE * CHROMA_DG_ANCHOR_IRE)
-    reference = zone_phase(hz_back, 0, ZONE)
-    for i, level in enumerate(LEVELS):
-        assert zone_amp(hz_back, i, ZONE) == pytest.approx(want, rel=0.02)
-        assert zone_phase(hz_back, i, ZONE) == pytest.approx(reference,
-                                                            abs=0.5)
-        assert zone_luma(hz_back, i, ZONE) == pytest.approx(level, abs=0.1)
-
-
-def test_the_output_unit_wrapper_accepts_bytes():
-    ire = (composite_hz(LEVELS, ZONE, lambda l: 20.0) - IRE0) / HZ_IRE
-    picture, field = output_field_stub(ire)
-    from_bytes = apply_chroma_dg_correction_output(
-        picture.tobytes(), field, DOMESDAY_SLOPE)
-    from_array = apply_chroma_dg_correction_output(
-        picture, field, DOMESDAY_SLOPE)
-    assert np.array_equal(from_bytes, from_array)
 
 
 # ---------------------------------------------------------------------------

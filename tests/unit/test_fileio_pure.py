@@ -145,7 +145,6 @@ def test_unrecognised_extensions_fall_back_to_ffmpeg(extension):
         (".raw", ["-f", "s16le"]),
         (".r16", ["-f", "u16le"]),
         (".u16", ["-f", "u16le"]),
-        (".tbc", ["-f", "u16le"]),
         (".rf", ["-f", "f32le"]),
         (".s8", ["-f", "s8"]),
         (".r8", ["-f", "u8"]),

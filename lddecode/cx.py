@@ -6,7 +6,8 @@ CX audio expander (and matching compressor) for ld-decode analog audio.
 
 Implements the decoder for the IEC 60857-1986 Appendix B "AUDIO COMPRESSION
 SYSTEM" (CBS CX noise reduction) as a standalone post-processor for the analog
-audio .pcm that ld-decode emits, plus the mirror-image encoder used for testing.
+raw int16 stereo audio (as ld-decode's earlier .pcm output, or a WAV payload),
+plus the mirror-image encoder used for testing.
 
 The CX encoder is a *feedback* compressor whose control path ("sidechain") is
 driven from its own (compressed) output.  The decoder is therefore the exact

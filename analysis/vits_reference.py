@@ -139,7 +139,7 @@ def sample_to_ire(sample, blanking, white):
 
     Mirrors video_common.CaptureParams.out_scale and
     VideoField.output_to_ire(): the result is a ratio, so the sample domain
-    cancels and a 10-bit .cvbs and a 16-bit .tbc give the same answer as long
+    cancels, so either 4fsc sample encoding gives the same answer as long
     as all three arguments come from the same capture.
     """
     if white == blanking:

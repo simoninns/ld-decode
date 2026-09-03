@@ -11,7 +11,6 @@ tests/unit/test_ac3rf_demod.py.
 
 import os
 import pathlib
-import sqlite3
 import subprocess
 import sys
 
@@ -114,7 +113,7 @@ def run_ld_decode(rf_path, out_base):
     ).rstrip(os.pathsep)
 
     result = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "ld-decode"), "--tbc", "--AC3", str(rf_path), str(out_base)],
+        [sys.executable, str(REPO_ROOT / "ld-decode"), "--AC3", str(rf_path), str(out_base)],
         env=env,
         capture_output=True,
         text=True,
@@ -138,21 +137,12 @@ def test_decode_ac3_end_to_end(tmp_path):
 
     # ld-decode starts part way into the file, so the demodulated stream is
     # a subsequence of the transmitted one: probe from it to find where.
+    #
+    # This is also what pins the demodulator's continuity.  Each field's raw
+    # samples are fed in exactly once, in write order, so the stream has to
+    # run unbroken from the alignment point to its end: a field fed twice,
+    # or skipped, shifts everything after it and collapses the match rate.
+    # (The per-field symbol counts that used to assert this went with the
+    # .tbc metadata - the CVBS sidecars carry no AC-3 record.)
     match_rate = find_and_compare(rx, tx)
     assert match_rate > 0.99, f"symbol match rate {match_rate}"
-
-    # Each field records how many symbols were demodulated during it, so
-    # that consumers can reconstruct each field's range by summation; the
-    # counts must therefore account for the .ac3sym file exactly.
-    with sqlite3.connect(str(out_base) + ".tbc.db") as conn:
-        counts = [
-            row[0]
-            for row in conn.execute(
-                "SELECT ac3_symbols FROM field_record ORDER BY field_id"
-            )
-        ]
-    assert len(counts) > 1, "expected more than one field to be decoded"
-    assert all(count > 0 for count in counts), f"field with no symbols: {counts}"
-    assert sum(counts) == len(rx), (
-        f"per-field counts sum to {sum(counts)}, but .ac3sym holds {len(rx)} symbols"
-    )

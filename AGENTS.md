@@ -9,8 +9,8 @@
 - For pull-request workflows, see the PR template in `.github/PULL_REQUEST_TEMPLATE.md`.
 
 **ld-decode** is a software-defined decoder for LaserDisc RF captures. It demodulates raw RF samples
-(`.lds`, `.ldf`, `.s16`, `.u8`, `.r30`, …) into time-base-corrected video (`.tbc`), spec-compliant
-composite video (`.cvbs`/`.meta`), analogue audio (`.pcm`), digital audio (`.efm`) and metadata.
+(`.lds`, `.ldf`, `.s16`, `.u8`, `.r30`, …) into spec-compliant composite video (`.cvbs`/`.meta`),
+analogue audio (WAV), digital audio (`.efm`) and metadata.
 
 - **Type:** Python 3 signal-processing application (NumPy / SciPy / Numba)
 - **Package:** `lddecode/` — importable library plus CLI entry points
@@ -114,7 +114,7 @@ Rules:
 **Unit tests MUST NOT access the filesystem, network, subprocesses, or the system clock under ANY
 circumstances.** This is enforced in code review:
 
-- ❌ **Forbidden:** `tmp_path`, `open()`, reading a `.ldf`/`.tbc`/`.json` fixture, `subprocess.run`,
+- ❌ **Forbidden:** `tmp_path`, `open()`, reading a `.ldf`/`.cvbs`/`.json` fixture, `subprocess.run`,
   `requests`, `time.time()` used as an input, unseeded `np.random`
 - ❌ **Forbidden:** calling code that touches disk "just to test the happy path"
 - ❌ **Forbidden:** importing `lddecode.core` to reach a symbol — import the owning module directly
@@ -148,7 +148,7 @@ Use pytest markers locally and CTest labels for the CMake-driven lanes; keep the
 | `unit` | Fast, hermetic pytest suites under `tests/unit/` |
 | `functional` | Tests requiring real capture data, subprocesses, or a full decode |
 | `dsp` | Filter, demodulation and signal-maths unit tests |
-| `format` | File-format unit tests (`.lds`, `.ldf`, `.cvbs`, `.tbc`, metadata) |
+| `format` | File-format unit tests (`.lds`, `.ldf`, `.cvbs`, metadata) |
 | `decode` | Field/frame assembly, sync and TBC logic unit tests |
 | `parallel` | Threading, block-cache and speculation unit tests |
 | `slow` | Functional tests that exceed roughly 60 s |
@@ -161,7 +161,8 @@ For new decode behaviour and changes to existing decode behaviour:
   (`tests/unit/test_<module>_<behaviour>.py`) in the same PR.
 - Preserve the serial/threaded equivalence guarantee: a `-t N` decode must remain **bit-identical**
   to the serial decode with `--exact-speculation`. Any change to `parallel.py`, `decoder.py`, or
-  cached demodulation must keep the `compare-*-parallel-*` CTest comparisons passing.
+  cached demodulation must keep the `compare-*-parallel-*` CTest comparisons passing (they cover
+  `.cvbs`, `.meta`, `.efm` and the audio WAV).
 - Preserve format conformance: `.cvbs` output must continue to satisfy `analysis/cvbs_verify.py`
   against `cvbs-file-format-specification/`.
 - Update the relevant page under `docs/` in the same PR whenever a CLI flag, output file, or
@@ -171,8 +172,8 @@ For new decode behaviour and changes to existing decode behaviour:
 
 `analysis/` scripts are test oracles, not scratch code. When changing one:
 - Keep its `PASS`/`FAIL` output line stable — CTest matches it with `PASS_REGULAR_EXPRESSION`.
-- Keep the skip path intact for optional external tools (e.g. `ORC ROUNDTRIP: SKIPPED` when
-  `orc-cli` is absent); never make a previously optional dependency mandatory.
+- Keep the skip path intact for optional external tools (a `SKIPPED` line CTest matches with
+  `SKIP_REGULAR_EXPRESSION`); never make a previously optional dependency mandatory.
 - Put reusable measurement maths in `analysis/video_common.py` (or `lddecode/metrics.py` when the
   decoder needs it too) and unit test it there.
 
@@ -378,7 +379,6 @@ ld-decode/
 ├── tests/                         # pytest suites (see TESTING.md for the unit/functional split)
 ├── analysis/                      # Measurement and verification oracles used by CTest
 │   ├── cvbs_verify.py             # .cvbs conformance against the format specification
-│   ├── cvbs_orc_roundtrip.py      # Round-trip against decode-orc's chroma decoder (optional)
 │   ├── differential_phase.py      # VITS / test-pattern measurement
 │   ├── burst_metrics.py           # Per-field colour burst metrics (NTSC comb)
 │   ├── vits_reference.py          # Normative VITS definitions (IEC 60856/60857)
@@ -446,10 +446,10 @@ ld-decode/
 ld-decode's outputs are consumed by other tools; their formats are contracts, not implementation
 details.
 
-- `.tbc` + `.tbc.json` — time-base-corrected video and its metadata, consumed by the legacy
-  ld-decode-tools chain and decode-orc.
 - `.cvbs` + `.meta` — composite video, normatively defined by `cvbs-file-format-specification/`.
-- `.pcm`, `.efm`, `.ac3` — analogue audio, EFM, and AC-3 RF side outputs.
+  This is ld-decode's only video output.
+- `<out>_audio_0.wav`, `.efm` (+ `.efm.meta`), `.dropouts.meta`, `.ac3sym` — analogue audio, EFM,
+  dropout runs, and AC-3 RF side outputs, all as the specification's extensions define them.
 
 Rules:
 - **Never** change a field's meaning, units, or position in an existing output without saying so
@@ -467,7 +467,6 @@ Rules:
 |--------|---------------|
 | CLI flag added, removed, renamed, or default changed | `docs/user-guide/command.md` |
 | New or changed output file type | `docs/technical/file-formats.md` |
-| `.tbc.json` metadata field added, removed, or repurposed | `docs/technical/metadata-format.md` |
 | Filter or servo tuning parameter added or changed | `docs/technical/filter-tuning-parameters.md` |
 | VITS-driven servo behaviour changed | `docs/technical/vits-servos.md` |
 | Conformance allowance added or changed | `docs/technical/vits-radius-baseline.md` |

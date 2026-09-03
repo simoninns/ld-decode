@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Differential phase measurement: chroma phase vs luminance level in TBC output.
+"""Differential phase measurement: chroma phase vs luminance level.
 
-Measures the relationship between luminance (IRE) and chroma phase across the
-TBC output to characterize differential phase distortion.
+Measures the relationship between luminance (IRE) and chroma phase across
+the decoded CVBS output to characterize differential phase distortion.
 
 Test patterns are auto-detected and only the analyses whose patterns are
 present are run.
@@ -21,7 +21,7 @@ PAL (burst-relative fs/4 quadrature demodulation):
   - 50% luma full-line subcarrier reference (line 331 style) if present
 
 Usage:
-    python analysis/differential_phase.py [file.tbc | file.composite]
+    python analysis/differential_phase.py [file.cvbs | file.composite]
 """
 
 import argparse
@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from lddecode.metrics import CombNTSC
 from video_common import (
-    load_tbc, load_cvbs, detect_patterns, summarize_patterns,
+    load_cvbs, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
     measure_ntc7_transients, measure_pal_its_transients,
@@ -53,11 +53,9 @@ from video_common import (
 # Chroma amplitude below which a line is treated as carrying no measurable
 # subcarrier.  Expressed in IRE and scaled by the capture's out_scale at the
 # point of use, because the amplitudes this is compared against are in raw
-# sample units, whose scale differs per source: a .tbc is 16-bit (out_scale
-# around 360-390) while a .cvbs is in the normative 10-bit domain (out_scale
-# 5.6-5.9).  A fixed raw threshold silently rejected every line of a .cvbs.
-# 1.35 IRE reproduces the previous raw threshold of 500 on both .tbc systems
-# (1.39 IRE NTSC, 1.29 IRE PAL) and is far below a nominal 20 IRE burst.
+# sample units: a .cvbs is in the normative 10-bit domain (out_scale
+# 5.6-5.9), so a fixed raw threshold rejects every line of one.  1.35 IRE
+# is far below a nominal 20 IRE burst.
 CHROMA_AMP_FLOOR_IRE = 1.35
 
 
@@ -1134,13 +1132,14 @@ def pal_quality_reports(det, fields):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Measure differential phase from an NTSC or PAL TBC file.",
+        description="Measure differential phase from an NTSC or PAL CVBS file.",
     )
     parser.add_argument(
-        "tbc_file",
+        "cvbs_file",
         nargs="?",
-        default=os.path.join(os.path.dirname(__file__), "..", "main.tbc"),
-        help="Path to .tbc or CVBS .composite file (default: main.tbc in the project root)",
+        default=os.path.join(os.path.dirname(__file__), "..", "main.cvbs"),
+        help="Path to a CVBS .cvbs/.composite file "
+             "(default: main.cvbs in the project root)",
     )
     parser.add_argument(
         "-n", "--max-fields",
@@ -1150,27 +1149,21 @@ def main():
     )
     args = parser.parse_args()
 
-    tbc_path = os.path.abspath(args.tbc_file)
+    cvbs_path = os.path.abspath(args.cvbs_file)
 
     print("=" * 90)
     print("DIFFERENTIAL PHASE MEASUREMENT")
-    print(f"TBC file: {tbc_path}")
+    print(f"CVBS file: {cvbs_path}")
     print("=" * 90)
 
-    if tbc_path.endswith((".cvbs", ".composite")):
-        params, fields, _ = load_cvbs(tbc_path, max_fields=args.max_fields)
-    else:
-        params, fields, _ = load_tbc(tbc_path, max_fields=args.max_fields)
+    params, fields, _ = load_cvbs(cvbs_path, max_fields=args.max_fields)
     print(f"Loaded {len(fields)} fields, system={params.system}")
     print(f"  field_width={params.field_width}, field_height={params.field_height}")
     print(f"  sample_rate={params.sample_rate_mhz:.4f} MHz")
-    # Sample domain differs by source: 16-bit for .tbc, the normative
-    # 10-bit domain for .cvbs (see video_common.decode_cvbs_samples).
-    domain = "10-bit" if params.sample_encoding else "16-bit"
+    # Samples arrive in the normative 10-bit domain whichever 4fsc
+    # encoding the file uses (see video_common.decode_cvbs_samples).
     print(f"  blanking={params.blanking_16b_ire}, white={params.white_16b_ire} "
-          f"({domain} samples"
-          + (f", {params.sample_encoding}" if params.sample_encoding else "")
-          + ")")
+          f"(10-bit samples, {params.sample_encoding})")
     print(f"  out_scale={params.out_scale:.2f}")
 
     # Detect which test patterns are present, and only verify those.

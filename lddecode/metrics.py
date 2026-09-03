@@ -1,9 +1,14 @@
-"""VITS metrics computation and partial NTSC comb filter for ld-decode."""
+"""Per-field level measurement and partial NTSC comb filter for ld-decode.
+
+The measurements here are the ones the decode itself steers on:
+detect_levels feeds the AGC and black_to_white_rf_ratio the MTF servo.
+CombNTSC is the NTSC comb filter, used by the analysis oracles.
+"""
 
 import numpy as np
 
 from .filters import inrange
-from .dsp import nb_mean, nb_median, rms, roundfloat
+from .dsp import nb_median, roundfloat
 
 
 def detect_levels(rf, field, output_lines):
@@ -167,236 +172,43 @@ class CombNTSC:
         return signal / (2 * f.out_scale), phase, snr
 
 
-def calcsnr(f, snrslice, psnr=False):
-    # if dspicture isn't converted to float, this underflows at -40IRE
-    data = f.output_to_ire(f.dspicture[snrslice].astype(float))
+def black_to_white_rf_ratio(rf, f):
+    """RF envelope ratio between a black line and a white VITS bar.
 
-    signal = np.mean(data) if not psnr else 100
-    noise = np.std(data)
+    The MTF servo's calibration input (LDdecode.bw_ratios): the standard
+    deviation of the *raw* RF over a known-black line divided by the same
+    over a known-white VITS bar, so it reports how far the disc's RF
+    envelope is compressed relative to a nominal pressing.  Both windows
+    are taken in raw-sample coordinates, shifted back by the demodulator's
+    group delay for that signal level.
 
-    return 20 * np.log10(signal / noise)
+    The white bar is the first entry of SysParams["LD_VITS_whitelocs"]
+    whose TBC line measures 90-110 IRE; a field carrying none (no VITS,
+    or a mistracked one) has no reference and returns None.  The result is
+    rounded to four decimal places, which is the precision the pool has
+    always held.
 
-
-def calcpsnr(f, snrslice):
-    return calcsnr(f, snrslice, psnr=True)
-
-
-# CCIR Rec. 567 unified noise weighting network: a single-time-constant
-# low-pass (tau0 = 245 ns, -3 dB ~ 650 kHz) that models the eye's reduced
-# sensitivity to high-frequency noise.  See references/README.md for the
-# sources.  Broadcast-style weighted SNR = 100 IRE p-p vs weighted RMS,
-# band-limited to 4.2 MHz (525-line) / 5.0 MHz (625-line).
-UNIFIED_WEIGHTING_TAU = 245e-9
-
-
-def weighted_noise_rms(noise_ire, fs_hz, lpf_hz):
-    """RMS of a noise vector after unified weighting + band-limiting.
-
-    Applied in the frequency domain: measurement slices are short, so a
-    time-domain IIR's edge transient would span the whole segment.
+    Returns the ratio (dimensionless) or None.
     """
-    n = len(noise_ire)
-    freqs = np.fft.rfftfreq(n, 1.0 / fs_hz)
-    spec = np.abs(np.fft.rfft(noise_ire)) ** 2
-    w2 = 1.0 / (1.0 + (2 * np.pi * freqs * UNIFIED_WEIGHTING_TAU) ** 2)
-    w2[(freqs > lpf_hz) | ((freqs < 10e3) & (freqs > 0))] = 0.0
-    # Parseval for rfft: interior bins count twice
-    scale = np.full(len(spec), 2.0)
-    scale[0] = 1.0
-    if n % 2 == 0:
-        scale[-1] = 1.0
-    meansq = np.sum(spec * w2 * scale) / (n * n)
-    return np.sqrt(meansq)
+    def envelope_rms(line_spec, delay_key):
+        """Standard deviation of the raw RF over a TBC line window,
+        shifted back into raw-sample coordinates by the demodulator's
+        group delay for that signal level."""
+        sl = f.lineslice(*line_spec)
+        delay = int(rf.delays[delay_key])
+        return np.std(f.rawdata[sl.start - delay: sl.stop - delay])
 
-
-def calcpsnr_weighted(f, snrslice):
-    """Weighted PSNR (dB, 100 IRE p-p vs CCIR-567-weighted RMS noise).
-
-    The slice is detrended with a linear fit (the noise meter's tilt-null)
-    before weighting.
-    """
-    data = f.output_to_ire(f.dspicture[snrslice].astype(float))
-    n = len(data)
-    if n < 32:
-        return None
-    x = np.arange(n)
-    noise = data - np.polyval(np.polyfit(x, data, 1), x)
-
-    fs_hz = f.rf.SysParams["outfreq"] * 1e6
-    lpf_hz = 4.2e6 if f.rf.system == "NTSC" else 5.0e6
-    rms_w = weighted_noise_rms(noise, fs_hz, lpf_hz)
-    if rms_w <= 0:
-        return None
-    return 20 * np.log10(100.0 / rms_w)
-
-
-def computeMetricsPAL(metrics, rf, f, fp=None):
-    if f.isFirstField:
-        wl_slice = f.lineslice_tbc(13, 4.7 + 15.5, 3)
-        metrics["greyPSNR"] = calcpsnr(f, wl_slice)
-        metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[wl_slice]))
-    else:
-        b50slice = f.lineslice_tbc(13, 36, 20)
-        metrics["palVITSBurst50Level"] = rms(f.dspicture[b50slice]) / f.out_scale
-
-    return metrics
-
-
-def computeMetricsNTSC(metrics, rf, f, fp=None):
-    # check for a white flag - only on earlier discs, and only on first "frame" fields
-    wf_slice = f.lineslice_tbc(11, 15, 40)
-    if inrange(np.mean(f.output_to_ire(f.dspicture[wf_slice])), 92, 108):
-        metrics["ntscWhiteFlagSNR"] = calcpsnr(f, wf_slice)
-
-    # use line 19 to determine 0 and 70 IRE burst levels for MTF compensation later
-    c = CombNTSC([f])
-
-    level, phase, snr = c.calcLine19Info()
-    if level is not None:
-        metrics["ntscLine19ColorPhase"] = phase
-        metrics["ntscLine19ColorRawSNR"] = snr
-
-    ire50_slice = f.lineslice_tbc(19, 36, 10)
-    metrics["greyPSNR"] = calcpsnr(f, ire50_slice)
-    metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[ire50_slice]))
-
-    ire50_rawslice = f.lineslice(19, 36, 10)
-    rawdata = f.rawdata[
-        ire50_rawslice.start
-        - int(rf.delays["video_white"]) : ire50_rawslice.stop
-        - int(rf.delays["video_white"])
-    ]
-    metrics["greyRFLevel"] = np.std(rawdata)
-
-    _metrics_fp_ntsc(metrics, f, fp)
-
-    return metrics
-
-
-def _metrics_fp_ntsc(metrics, f, fp):
-    """The previous-frame-dependent NTSC metrics (3D comb line-19 SNR
-    and burst levels).  Split out so they can be computed at commit time
-    against a metrics dict that was precomputed per-field."""
-    if not f.isFirstField and fp is not None:
-        c3d = CombNTSC([fp, f])
-
-        level3d, phase3d, snr3d = c3d.calcLine19Info()
-        if level3d is not None:
-            metrics["ntscLine19Burst70IRE"] = level3d
-            metrics["ntscLine19Color3DRawSNR"] = snr3d
-
-            sl_cburst = f.lineslice_tbc(19, 4.7 + 0.8, 2.4)
-            diff = (
-                f.dspicture[sl_cburst].astype(float)
-                - fp.dspicture[sl_cburst].astype(float)
-            ) / 2
-
-            metrics["ntscLine19Burst0IRE"] = np.sqrt(2) * rms(diff) / f.out_scale
-
-    return metrics
-
-
-def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
-    system = f.rf.system
-    if verboseVITS:
-        verbose = True
-
-    metrics = {}
-
-    if system == "NTSC":
-        computeMetricsNTSC(metrics, rf, f, fp)
-    else:
-        computeMetricsPAL(metrics, rf, f, fp)
-
-    # FIXME: these should probably be computed in the Field class
-    f.whitesnr_slice = None
-
-    for wl in f.rf.SysParams["LD_VITS_whitelocs"]:
+    white_rf = None
+    for wl in rf.SysParams["LD_VITS_whitelocs"]:
         wl_slice = f.lineslice_tbc(*wl)
         if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
-            f.whitesnr_slice = wl
-            metrics["wSNR"] = calcpsnr(f, wl_slice)
-            wsnr_w = calcpsnr_weighted(f, wl_slice)
-            if wsnr_w is not None:
-                metrics["wSNRw"] = wsnr_w
-            metrics["whiteIRE"] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
-
-            rawslice = f.lineslice(*wl)
-            rawdata = f.rawdata[
-                rawslice.start
-                - int(rf.delays["video_white"]) : rawslice.stop
-                - int(rf.delays["video_white"])
-            ]
-            metrics["whiteRFLevel"] = np.std(rawdata)
-
+            white_rf = envelope_rms(wl, "video_white")
             break
 
-    bl_slice = f.lineslice(*rf.SysParams["blacksnr_slice"])
-    bl_slicetbc = f.lineslice_tbc(*rf.SysParams["blacksnr_slice"])
+    if white_rf is None:
+        return None
 
-    delay = int(rf.delays["video_sync"])
-    bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
-    metrics["blackLineRFLevel"] = np.std(f.rawdata[bl_sliceraw])
+    black_rf = envelope_rms(rf.SysParams["blacksnr_slice"], "video_sync")
 
-    metrics["blackLinePreTBCIRE"] = rf.hztoire(
-        np.mean(f.data["video"]["demod"][bl_slice])
-    )
-    metrics["blackLinePostTBCIRE"] = f.output_to_ire(
-        np.mean(f.dspicture[bl_slicetbc])
-    )
-
-    metrics["bPSNR"] = calcpsnr(f, bl_slicetbc)
-    bpsnr_w = calcpsnr_weighted(f, bl_slicetbc)
-    if bpsnr_w is not None:
-        metrics["bPSNRw"] = bpsnr_w
-
-    if "whiteRFLevel" in metrics:
-        metrics["blackToWhiteRFRatio"] = (
-            metrics["blackLineRFLevel"] / metrics["whiteRFLevel"]
-        )
-
-    return _round_metrics(
-        metrics, metrics.keys() if verbose else DEFAULT_OUTPUT_KEYS
-    )
-
-
-DEFAULT_OUTPUT_KEYS = [
-    "wSNR", "bPSNR", "wSNRw", "bPSNRw",
-    "ntscLine19Burst70IRE", "ntscLine19Color3DRawSNR", "ntscLine19Burst0IRE",
-]
-
-
-def _round_metrics(metrics, outputkeys):
-    metrics_rounded = {}
-
-    for k in outputkeys:
-        if k not in metrics:
-            continue
-
-        if "Ratio" in k:
-            digits = 4
-        elif "Burst" in k:
-            digits = 3
-        else:
-            digits = 1
-        rounded = float(roundfloat(metrics[k], places=digits))
-        if np.isfinite(rounded):
-            metrics_rounded[k] = rounded
-
-    return metrics_rounded
-
-
-def computeMetricsFP(rf, f, fp, base_metrics):
-    """Combine a per-field metrics dict precomputed with fp=None with the
-    previous-frame-dependent metrics, yielding the same dict that
-    computeMetrics(rf, f, fp) returns.  The base values were already
-    rounded by the same rules, so only the fp-dependent part is computed
-    here."""
-    out = {k: base_metrics[k] for k in DEFAULT_OUTPUT_KEYS if k in base_metrics}
-
-    if f.rf.system == "NTSC":
-        fpm = {}
-        _metrics_fp_ntsc(fpm, f, fp)
-        out.update(_round_metrics(fpm, DEFAULT_OUTPUT_KEYS))
-
-    return out
+    ratio = float(roundfloat(black_rf / white_rf, places=4))
+    return ratio if np.isfinite(ratio) else None

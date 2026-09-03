@@ -299,7 +299,8 @@ def test_output_anchor_levels_are_exact(sysparams, output_range, expected):
     )
 
     # Sync tip, blanking and peak white are the three levels every downstream
-    # consumer of a .tbc keys off.  Integer output, so assert them exactly.
+    # consumer of the decoded picture keys off.  Integer output, so assert
+    # them exactly.
     assert tuple(int(v) for v in out) == expected
     assert out.dtype == np.uint16
 

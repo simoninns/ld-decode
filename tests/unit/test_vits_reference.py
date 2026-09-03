@@ -215,7 +215,7 @@ def test_sample_scaling_puts_blanking_at_zero_and_white_at_one_hundred(
     blanking, white
 ):
     # Mirrors VideoField.output_to_ire(): the sample domain cancels, so the
-    # 10-bit CVBS presets and the 16-bit .tbc levels give the same answer.
+    # 10-bit CVBS presets and the decoder's 16-bit levels give the same answer.
     assert vr.sample_to_ire(blanking, blanking, white) == pytest.approx(0.0, abs=1e-9)
     assert vr.sample_to_ire(white, blanking, white) == pytest.approx(100.0, abs=1e-9)
 
@@ -234,7 +234,7 @@ def test_sample_scaling_agrees_with_the_loader_it_mirrors(system):
     import numpy as np
     from video_common import CaptureParams, VideoField
 
-    params = CaptureParams.for_cvbs(system)
+    params = CaptureParams(system)
     field = VideoField(
         np.zeros(params.field_samples, dtype=np.int32), 0, params,
         {"field_phase_id": 1, "is_first_field": True, "field_id": 0},
@@ -260,7 +260,7 @@ def test_a_nominal_and_its_ideal_sample_agree_on_the_measurement_scale(
     # read it back through the loader's scale; it must return the nominal.
     from video_common import CaptureParams
 
-    params = CaptureParams.for_cvbs(system)
+    params = CaptureParams(system)
     expected_ire = vr.to_ire(nominal, system)
     sample = params.blanking_16b_ire + expected_ire * params.out_scale
     measured = vr.sample_to_ire(

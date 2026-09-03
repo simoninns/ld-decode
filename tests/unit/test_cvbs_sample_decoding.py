@@ -180,8 +180,8 @@ def test_an_array_already_in_the_container_dtype_is_accepted():
 @pytest.mark.parametrize("system", ["NTSC", "PAL"])
 def test_cvbs_params_carry_ten_bit_levels(system):
     # decode_cvbs_samples returns the 10-bit domain, so the levels compared
-    # against it must be in that domain and not the .tbc file's 16-bit one.
-    params = CaptureParams.for_cvbs(system)
+    # against it must be in that domain and not the decoder's 16-bit one.
+    params = CaptureParams(system)
     levels = CVBS_GEOMETRY[system]["levels"]
     assert params.blanking_16b_ire == levels["blanking"]
     assert params.white_16b_ire == levels["white"]
@@ -191,7 +191,7 @@ def test_cvbs_params_carry_ten_bit_levels(system):
 
 @pytest.mark.parametrize("system", ["NTSC", "PAL"])
 def test_blanking_reads_as_zero_ire_and_white_as_one_hundred(system):
-    params = CaptureParams.for_cvbs(system)
+    params = CaptureParams(system)
     field = VideoField(
         np.zeros(params.field_samples, dtype=np.int32), 0, params,
         {"field_phase_id": 1, "is_first_field": True, "field_id": 0},
@@ -209,7 +209,7 @@ def test_ire_is_identical_whichever_encoding_the_file_used(system):
     fields = []
     for encoding, buf in (("CVBS_U10_4FSC", u10_bytes(values)),
                           ("CVBS_U16_4FSC", u16_bytes(values))):
-        params = CaptureParams.for_cvbs(system, sample_encoding=encoding)
+        params = CaptureParams(system, sample_encoding=encoding)
         samples = decode_cvbs_samples(buf, encoding)
         field = VideoField(
             np.zeros(params.field_samples, dtype=np.int32), 0, params,
@@ -223,7 +223,7 @@ def test_black_level_from_metadata_is_taken_as_a_ten_bit_value():
     # The .meta cvbs_file record stores black_level in the 10-bit domain;
     # scaling it here as if it were 16-bit put NTSC setup out by a factor of
     # 64 relative to the samples it is compared against.
-    params = CaptureParams.for_cvbs("NTSC", black_level=300)
+    params = CaptureParams("NTSC", black_level=300)
     assert params.black_16b_ire == 300
     setup_ire = (params.black_16b_ire - params.blanking_16b_ire) / params.out_scale
     np.testing.assert_allclose(setup_ire, 60 / 5.6, rtol=0, atol=1e-9)
@@ -234,7 +234,7 @@ def test_params_carry_the_encoding_the_file_was_written_in(encoding):
     # _cvbs_extract_field reads this to decode each row, and consumers branch
     # on it to report which sample domain they are working in, so it has to
     # be the file's encoding rather than the default.
-    assert CaptureParams.for_cvbs("PAL", sample_encoding=encoding).sample_encoding == (
+    assert CaptureParams("PAL", sample_encoding=encoding).sample_encoding == (
         encoding
     )
 
@@ -242,4 +242,4 @@ def test_params_carry_the_encoding_the_file_was_written_in(encoding):
 def test_the_default_cvbs_encoding_is_the_normative_production_one():
     # CVBS file format specification - index: CVBS_U10_4FSC is the normative
     # production output, and ld-decode's default for PAL.
-    assert CaptureParams.for_cvbs("PAL").sample_encoding == "CVBS_U10_4FSC"
+    assert CaptureParams("PAL").sample_encoding == "CVBS_U10_4FSC"

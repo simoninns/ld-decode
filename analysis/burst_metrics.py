@@ -9,9 +9,8 @@ Reports line 19 burst level, phase and SNR for every field, in both 1D
 (single field) and 3D (inter-frame) comb modes, plus the median burst phase
 across the active lines and the 3D burst cancellation residue.
 
-Reads whatever video_common.load_video() accepts: a .cvbs/.composite file with
-its .meta sidecar, in either 4fsc sample encoding, or a legacy .tbc with its
-.tbc.db.  Loading, capture parameters and the field objects all come from
+Reads a .cvbs/.composite file with its .meta sidecar, in either 4fsc sample
+encoding.  Loading, capture parameters and the field objects all come from
 video_common, so this measures the same field data, through the same code path,
 as differential_phase.py and the rest of the analysis oracles.
 
@@ -20,7 +19,7 @@ comb filter.  PAL captures are rejected rather than silently mismeasured.
 
 Usage:
     python analysis/burst_metrics.py file.cvbs
-    python analysis/burst_metrics.py file.tbc -n 20
+    python analysis/burst_metrics.py file.composite -n 20
 """
 
 import argparse
@@ -45,9 +44,8 @@ BURST_DURATION_US = 2.4
 
 # Amplitude below which a line's burst phase is undefined rather than weak.
 # This is a divide-by-zero guard on arctan2, not a level gate: against a
-# nominal burst it is negligible in either sample domain (about 0.0003 IRE on
-# a 16-bit .tbc, 0.018 IRE on a 10-bit .cvbs), so it only rejects lines with
-# no subcarrier at all.
+# nominal burst it is negligible (about 0.018 IRE in the normative 10-bit
+# domain), so it only rejects lines with no subcarrier at all.
 PHASE_DEFINED_MIN_AMP = 0.1
 
 
@@ -84,7 +82,7 @@ def measure_burst(field):
     Taken over the samples as stored rather than about blanking, which is the
     same quantity lddecode.metrics reports for palVITSBurst50Level.  Both the
     RMS and out_scale scale with the sample domain, so the ratio is the same
-    for a .tbc and a .cvbs of one decode.
+    for either 4fsc sample encoding of one decode.
     """
     sl = field.lineslice_tbc(BURST_LINE, BURST_START_US, BURST_DURATION_US)
     data = field.dspicture[sl].astype(np.float64)
@@ -123,7 +121,7 @@ def format_row(field, mode, level, phase, snr, burst_rms=None, burst0=None,
 
 
 def run_analysis(path, max_fields=None, verbose=False):
-    """Report CombNTSC burst metrics for a .cvbs or .tbc file."""
+    """Report CombNTSC burst metrics for a CVBS file."""
     try:
         params, fields, _ = load_video(path, max_fields=max_fields)
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -183,8 +181,7 @@ def main():
     )
     parser.add_argument(
         "video_file",
-        help="Path to a .cvbs/.composite file (companion .meta must exist) "
-             "or a legacy .tbc (companion .tbc.db must exist)",
+        help="Path to a .cvbs/.composite file (companion .meta must exist)",
     )
     parser.add_argument(
         "-n", "--max-fields",

@@ -315,7 +315,6 @@ class Ac3RfDemodulator:
     _PHASE_ACCUM_BITS = 14
 
     def __init__(self, input_sample_frequency, logger=None):
-        self.input_sample_frequency = input_sample_frequency
 
         # Decimate so that the sample rate is at least 7 MHz before mixing
         # (the signal occupies 2.88 MHz +- 150 kHz)
