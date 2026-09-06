@@ -528,6 +528,10 @@ class LDdecode:
                         zeta=float(os.environ.get("LDDECODE_EFM_TIMING_ZETA", "0.6")),
                         ted_gain=float(os.environ.get("LDDECODE_EFM_TIMING_TED", "0.5")),
                         acq_boost=float(os.environ.get("LDDECODE_EFM_TIMING_ACQBOOST", "6")),
+                        # LDDECODE_EFM_RESTORE_SYNC=0 leaves a missed sync's
+                        # runs as read instead of rewriting them to T11-T11.
+                        restore_sync=os.environ.get(
+                            "LDDECODE_EFM_RESTORE_SYNC", "1") != "0",
                         eq_taps=_eq_taps,
                     )
                 else:
