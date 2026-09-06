@@ -1384,7 +1384,17 @@ class RFDecode:
         # removable singularity at integer multiples of N (delta = 0 here)
         with np.errstate(invalid="ignore", divide="ignore"):
             mag = np.where(np.abs(den) > 1e-12, num / den, float(N))
-        return mag * np.exp(1j * np.pi * d * (N - 1) / N)
+        # exp(1j t) written as cos t + 1j sin t, straight into the result's
+        # real/imag views: bit-identical to np.exp on a pure-imaginary
+        # argument, without its complex temporaries (this kernel is built
+        # over cut_bins points per subtracted line, so it is the stage's
+        # single hottest expression)
+        theta = np.pi * d * (N - 1) / N
+        out = np.empty(theta.shape, dtype=np.complex128)
+        np.cos(theta, out=out.real)
+        np.sin(theta, out=out.imag)
+        out *= mag
+        return out
 
     def _v4300d_refine_subtract(self, X, k, fit_bins=64, cut_bins=2048):
         """Refine the frequency of the tone near FFT bin k, estimate its
@@ -1413,7 +1423,7 @@ class RFDecode:
         N = self.blocklen
         fpb = self.freq_hz / N
         m = np.arange(k - fit_bins, k + fit_bins + 1)
-        Xw = X[m]
+        Xw = X[k - fit_bins : k + fit_bins + 1]
 
         # normalised least-squares projection c(f) = <X, E(f-m)> / ||E||^2
         # evaluated on a fine grid bracketing the argmax bin
@@ -1421,7 +1431,6 @@ class RFDecode:
         E = self._v4300d_dirichlet(grid[:, np.newaxis] - m[np.newaxis, :])
         num = E.conj() @ Xw
         den = np.sum(E.real**2 + E.imag**2, axis=1)
-        c = num / den
         mag = (num.real**2 + num.imag**2) / den  # captured tone energy
         g = int(np.argmax(mag))
         if 0 < g < len(grid) - 1:
@@ -1432,12 +1441,17 @@ class RFDecode:
         fbin = grid[g] + frac * (grid[1] - grid[0])
 
         # amplitude at the refined frequency, then subtract its footprint
-        mc = np.arange(k - cut_bins, k + cut_bins + 1)
+        lo, hi = k - cut_bins, k + cut_bins + 1
+        mc = np.arange(lo, hi)
         Ef = self._v4300d_dirichlet(fbin - m)
         c = np.dot(Ef.conj(), Xw) / np.sum(Ef.real**2 + Ef.imag**2)
-        X[mc] -= c * self._v4300d_dirichlet(fbin - mc)
-        # keep the spectrum that of a real signal
-        X[N - mc] = np.conj(X[mc])
+        # cut is a view, so this subtracts in place; indexing with mc would
+        # gather cut_bins complex128 out of X and scatter them back
+        cut = X[lo:hi]
+        cut -= c * self._v4300d_dirichlet(fbin - mc)
+        # keep the spectrum that of a real signal.  X[N - mc] is that same
+        # run reversed, so it slices too.
+        X[N - hi + 1 : N - lo + 1] = np.conj(cut[::-1])
         return fbin * fpb
 
     def v4300d_coherent_subtract(self, indata_fft, maxlines=10):
